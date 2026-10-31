@@ -11,7 +11,7 @@ Android starter built with Kotlin, Jetpack Compose, Material 3 Expressive, `n2k0
 - Unit tests, lint, CI builds, signed APK prereleases on experimental PRs, and stable releases on merge to `main`.
 
 ## Build
-Use JDK 17 and Android SDK 37. Set `N2K02_PACKAGES_TOKEN` to a read-only GitHub Packages token with access to `n2k02theme` and `n2k02updater`.
+Use JDK 17 and Android SDK 36. Set `N2K02_PACKAGES_TOKEN` to a read-only GitHub Packages token with access to `n2k02theme` and `n2k02updater`.
 
 ```sh
 ./gradlew testDebugUnitTest lintDebug assembleDebug
