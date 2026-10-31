@@ -10,11 +10,11 @@ val appVersionSuffix = (findProperty("appVersionSuffix") as String?) ?: ""
 
 android {
     namespace = "dev.n2k02.localadb"
-    compileSdk = 37
+    compileSdk = 36
     defaultConfig {
         applicationId = "dev.n2k02.localadb"
         minSdk = 26
-        targetSdk = 37
+        targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersion + appVersionSuffix
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
