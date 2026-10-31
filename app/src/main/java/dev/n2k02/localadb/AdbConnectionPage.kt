@@ -1,6 +1,10 @@
 package dev.n2k02.localadb
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.Settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,7 +22,20 @@ import androidx.compose.ui.unit.dp
 internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val state by AdbEngine.status.collectAsState()
+    val permissions by AdbPermissionBootstrap.status.collectAsState()
     var code by remember { mutableStateOf("") }
+    val requiredNetwork = remember {
+        buildList {
+            if (Build.VERSION.SDK_INT >= 33) add("android.permission.NEARBY_WIFI_DEVICES")
+            if (Build.VERSION.SDK_INT >= 37) add("android.permission.ACCESS_LOCAL_NETWORK")
+        }
+    }
+    val missingNetwork = requiredNetwork.filter {
+        context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+    }
+    val requestNetwork = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { AdbEngine.start(context, explicit = true) }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(Modifier.fillMaxWidth()) {
@@ -36,6 +53,13 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
                     }
                 }
                 if (!state.connected) {
+                    if (missingNetwork.isNotEmpty()) {
+                        OutlinedButton(onClick = {
+                            requestNetwork.launch(missingNetwork.toTypedArray())
+                        }) { Text("Allow Android nearby network access") }
+                        Text("Android may require local-network access before initial wireless pairing.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
                     Text("Enable Wireless debugging in Developer options, then open Pair device with pairing code.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Pairing port: " + (state.pairingPort?.toString() ?: "Searching…") +
@@ -57,6 +81,19 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
                         }, enabled = code.length == 6 && state.pairingPort != null
                     ) { Text("Pair with this phone") }
                     Text("Or enable the Accessibility service below to read only Android's pairing dialog.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("Automatic shell permissions", style = MaterialTheme.typography.titleMedium)
+                Text(if (permissions.busy) "Configuring with verified UID 2000…"
+                    else if (permissions.finished) "Configured: " + permissions.granted.size +
+                        " · Unavailable: " + permissions.unavailable.size
+                    else "Will configure automatically after verified shell UID 2000")
+                if (permissions.unavailable.isNotEmpty()) {
+                    Text(permissions.unavailable.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall)
                 }
             }

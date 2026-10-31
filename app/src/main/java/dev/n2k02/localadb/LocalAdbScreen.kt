@@ -23,12 +23,14 @@ private fun iconFor(page: Page): ImageVector = when (page) {
     Page.HOME -> Icons.Rounded.Home
     Page.SETTINGS -> Icons.Rounded.Settings
     Page.ADB -> Icons.Rounded.Wifi
+    Page.APPS -> Icons.Rounded.Apps
     Page.UPDATES -> Icons.Rounded.SystemUpdate
 }
 private fun titleFor(page: Page): String = when (page) {
     Page.HOME -> "Home"
     Page.SETTINGS -> "Settings"
     Page.ADB -> "ADB connection"
+    Page.APPS -> "Apps"
     Page.UPDATES -> "Updates"
 }
 
@@ -81,27 +83,125 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
         }
     ) { inset ->
         when (page) {
-            Page.HOME -> HomePage(Modifier.padding(inset), onOpenAdb = { navigate(Page.ADB) })
+            Page.HOME -> HomePage(
+                Modifier.padding(inset),
+                onOpenAdb = { navigate(Page.ADB) },
+                onOpenApps = { navigate(Page.APPS) }
+            )
             Page.SETTINGS -> SettingsPage(Modifier.padding(inset), updates.hasPendingUpdate(), ::navigate)
             Page.ADB -> AdbConnectionPage(Modifier.padding(inset))
+            Page.APPS -> AppsPage(Modifier.padding(inset))
             Page.UPDATES -> UpdatesPage(Modifier.padding(inset))
         }
     }
 }
 
 @Composable
-private fun HomePage(modifier: Modifier, onOpenAdb: () -> Unit) {
+private fun HomePage(modifier: Modifier, onOpenAdb: () -> Unit, onOpenApps: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val connection by AdbEngine.status.collectAsState()
+    val permissions by AdbPermissionBootstrap.status.collectAsState()
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(Modifier.fillMaxWidth().clickable(onClick = onOpenAdb)) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Local ADB", style = MaterialTheme.typography.titleLarge)
-                Text(if (connection.connected) "Connected · shell UID 2000"
-                    else "Not connected · Set up Wireless debugging")
-                Text(connection.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Open ADB connection", color = MaterialTheme.colorScheme.primary)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("System Status", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (connection.connected) "Ready · ADB shell UID 2000 verified"
+                    else "Not ready · authorize local Android debugging",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HorizontalDivider()
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    HomeStat("Connection", if (connection.connected) "Ready" else "Offline", Modifier.weight(1f))
+                    HomeStat("Pairing", if (connection.pairingPort != null) "Found" else if (connection.connected) "Paired" else "Waiting", Modifier.weight(1f))
+                    HomeStat("Recovery", if (connection.scanning) "Scan" else if (connection.connected) "Ready" else "Standby", Modifier.weight(1f))
+                    HomeStat("Shell UID", if (connection.connected) "2000" else "—", Modifier.weight(1f))
+                }
+                Text(connection.message, style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { AdbEngine.start(context, explicit = true) },
+                        modifier = Modifier.weight(1f)
+                    ) { Text(if (connection.connected) "Refresh" else "Start") }
+                    OutlinedButton(
+                        onClick = { AdbEngine.shutdown(context) },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Stop") }
+                    OutlinedButton(
+                        onClick = {
+                            AdbEngine.shutdown(context)
+                            AdbEngine.start(context, explicit = true)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Restart") }
+                }
             }
+        }
+        Card(Modifier.fillMaxWidth().clickable(onClick = onOpenAdb)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Rounded.Wifi, contentDescription = null)
+                    Text("ADB connection", style = MaterialTheme.typography.titleMedium)
+                }
+                Text(if (connection.tcpConnected) "Transport · TCP/5555"
+                    else if (connection.connected) "Transport · Wireless TLS"
+                    else "Pair with Android Wireless debugging")
+                Text("Pairing, watchdog, boot recovery and TCP settings",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Rounded.VerifiedUser, contentDescription = null)
+                    Text("Automatic permissions", style = MaterialTheme.typography.titleMedium)
+                }
+                Text(
+                    when {
+                        permissions.busy -> "Configuring Android permissions through shell UID 2000…"
+                        !permissions.finished -> "Waiting for verified shell UID 2000"
+                        permissions.unavailable.isEmpty() -> "Verified · " + permissions.granted.size + " eligible permissions ready"
+                        else -> permissions.granted.size.toString() + " granted · " +
+                            permissions.unavailable.size + " need attention"
+                    }
+                )
+                if (permissions.unavailable.isNotEmpty()) {
+                    Text(permissions.unavailable.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Card(Modifier.fillMaxWidth().clickable(onClick = onOpenApps)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Rounded.Apps, contentDescription = null)
+                    Text("App access", style = MaterialTheme.typography.titleMedium)
+                }
+                Text("Manage eligible Android permissions and open Shizuku authorization")
+                Text("Open Apps", color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(Modifier.padding(vertical = 12.dp, horizontal = 3.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, style = MaterialTheme.typography.labelSmall,
+                maxLines = 1, modifier = Modifier.fillMaxWidth(),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(value, style = MaterialTheme.typography.labelMedium,
+                maxLines = 1, modifier = Modifier.fillMaxWidth(),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }
@@ -118,6 +218,11 @@ private fun SettingsPage(modifier: Modifier, hasUpdate: Boolean, onNavigate: (Pa
             supportingContent = { Text("Pairing, verified shell, automatic recovery and TCP/5555") },
             leadingContent = { Icon(Icons.Rounded.Wifi, contentDescription = null) },
             modifier = Modifier.clickable { onNavigate(Page.ADB) })
+        ListItem(
+            headlineContent = { Text("Apps") },
+            supportingContent = { Text("Shizuku-compatible apps and verified Android permission grants") },
+            leadingContent = { Icon(Icons.Rounded.Apps, contentDescription = null) },
+            modifier = Modifier.clickable { onNavigate(Page.APPS) })
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
         ListItem(
             headlineContent = { Text("Updates") },
