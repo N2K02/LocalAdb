@@ -5,33 +5,15 @@ registries:
     url: https://maven.pkg.github.com/N2K02/n2k02updater
     username: N2K02
     password: ${{secrets.N2K02_PACKAGES_TOKEN}}
-  n2k02-theme:
-    type: maven-repository
-    url: https://maven.pkg.github.com/N2K02/n2k02theme
-    username: N2K02
-    password: ${{secrets.N2K02_PACKAGES_TOKEN}}
 updates:
   - package-ecosystem: gradle
     directory: "/"
     registries:
       - n2k02-updater
-      - n2k02-theme
     schedule:
       interval: daily
     open-pull-requests-limit: 5
     allow:
       - dependency-name: "dev.n2k02:updater"
-      - dependency-name: "dev.n2k02:theme"
-    groups:
-      n2k02-shared-libraries:
-        patterns:
-          - "dev.n2k02:updater"
-          - "dev.n2k02:theme"
-    labels:
-      - dependencies
-  - package-ecosystem: github-actions
-    directory: "/"
-    schedule:
-      interval: weekly
     labels:
       - dependencies
