@@ -68,7 +68,7 @@ jobs:
           MIGRATION_BASELINE=""
           local_last=$(git tag -l 'v[0-9]*' | sed -nE 's/^v([0-9]+[.][0-9])$/\1/p' | sort -V | tail -1 || true)
           # Read the complete app-specific public tag history, including build-N tags.
-          public_last=$(bash .github/scripts/latest-public-version.sh mradio)
+          public_last=$(bash .github/scripts/latest-public-version.sh localadb)
           public_last="${public_last#v}"
           last=$(printf '%s\n%s\n%s\n' "$MIGRATION_BASELINE" "$local_last" "$public_last" | sort -V | tail -1)
           if [ -n "$REQUESTED" ]; then

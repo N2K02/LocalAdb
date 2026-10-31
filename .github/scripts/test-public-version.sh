@@ -51,3 +51,6 @@ if PATH="$tmp:$PATH" PUBLIC_REFS_FIXTURE="$tmp/current-refs" \
   exit 1
 fi
 echo 'Public release version resolver regression tests passed'
+
+# Version calculation must resolve LocalAdb's own tag namespace, never a different app.
+grep -Fq 'bash .github/scripts/latest-public-version.sh localadb' .github/workflows/build.yml || { echo 'Wrong public release namespace in build workflow' >&2; exit 1; }

@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import dev.n2k02.updater.N2K02UpdateBadgedIcon
 import dev.n2k02.updater.N2K02UpdateBadge
@@ -91,7 +92,7 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
                     }
                 },
                 actions = {
-                    Icon(Icons.Rounded.Code, contentDescription = null)
+                    Icon(painterResource(R.drawable.ic_localadb), contentDescription = null)
                     Text("LocalAdb", modifier = Modifier.padding(end = 16.dp),
                         style = MaterialTheme.typography.titleMedium)
                 },
