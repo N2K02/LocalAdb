@@ -7,7 +7,7 @@ test -s "$APK_NAME"
 SHA=$(sha256sum "$APK_NAME" | cut -d' ' -f1)
 SIZE=$(stat -c '%s' "$APK_NAME")
 if [[ "$CHANNEL" == "experimental" ]]; then
-  TAG="$SLUG-exp-pr-${{PR_NUMBER}}-run-$GITHUB_RUN_NUMBER"
+  TAG="$SLUG-exp-pr-${PR_NUMBER:?}-run-$GITHUB_RUN_NUMBER"
   VERSION_NAME="$VERSION$VERSION_SUFFIX"
   TITLE="LocalAdb experimental · PR #$PR_NUMBER · build $GITHUB_RUN_NUMBER"
   FLAGS=(--prerelease --latest=false)
