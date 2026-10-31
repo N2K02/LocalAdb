@@ -1,156 +1,234 @@
-name: Build and release LocalAdb APK
+name: Build APK
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
   push:
-    branches: [main]
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, one decimal place (e.g. 2.0). Leave empty to add 0.1 to the last release.'
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
+# Cancel superseded builds for the same PR or main branch; each PR is independent.
 concurrency:
-  group: localadb-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  APP: LocalAdb
+
 jobs:
-  verify-build-release:
-    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
+  build:
+    # Release-signing secrets are never exposed to PRs from forks.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # full history + tags, for the version number and release notes
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android SDK packages
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0" --channel=3
 
-      - name: Select release channel and version
-        shell: bash
+      - name: Install Android SDK 37.0
         run: |
           set -euo pipefail
-          last=$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]$' | sort -V | tail -1 || true)
-          if [[ -z "$last" ]]; then
-            version="1.0"
-          elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            version="${last#v}"
+          yes | "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --channel=3 "platforms;android-37.0" "build-tools;36.0.0"
+
+      - name: Configure APK build channel
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "BUILD_VARIANT=Debug" >> "$GITHUB_ENV"
+            echo "APK_INPUT=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
           else
-            num="${last#v}"
-            n=$(( ${num%.*} * 10 + ${num#*.} + 1 ))
-            version="$((n / 10)).$((n % 10))"
+            echo "BUILD_VARIANT=Release" >> "$GITHUB_ENV"
+            echo "APK_INPUT=app/build/outputs/apk/release/app-release-unsigned.apk" >> "$GITHUB_ENV"
           fi
-          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            suffix="-experimental.$GITHUB_RUN_NUMBER"
-            tag="experimental-pr-${{ github.event.pull_request.number }}-run-$GITHUB_RUN_NUMBER"
-            apk="LocalAdb-PR-${{ github.event.pull_request.number }}-$GITHUB_RUN_NUMBER.apk"
-            title="LocalAdb experimental · PR #${{ github.event.pull_request.number }} · build $GITHUB_RUN_NUMBER"
-            channel=experimental
+
+      - name: Test public version resolution
+        run: bash .github/scripts/test-public-version.sh
+
+      - name: Work out version and release notes
+        env:
+          REQUESTED: ${{ github.event.inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Read all public stable releases to avoid reusing a published version.
+          # New app: no legacy version baseline.
+          MIGRATION_BASELINE=""
+          local_last=$(git tag -l 'v[0-9]*' | sed -nE 's/^v([0-9]+[.][0-9])$/\1/p' | sort -V | tail -1 || true)
+          # Read the complete app-specific public tag history, including build-N tags.
+          public_last=$(bash .github/scripts/latest-public-version.sh mradio)
+          public_last="${public_last#v}"
+          last=$(printf '%s\n%s\n%s\n' "$MIGRATION_BASELINE" "$local_last" "$public_last" | sort -V | tail -1)
+          if [ -n "$REQUESTED" ]; then
+            echo "$REQUESTED" | grep -Eq '^[0-9]+\.[0-9]$' || { echo "::error::Version must look like 1.0"; exit 1; }
+            ver="$REQUESTED"
+          elif [ -z "$last" ]; then
+            ver="1.0"
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            # PR APKs stay on the latest stable base and get an experimental suffix.
+            ver="$last"
           else
-            suffix=""
-            tag="v$version"
-            apk="LocalAdb-$version.apk"
-            title="LocalAdb $version"
-            channel=stable
-            if [[ -n "$last" && "v$version" == "$last" ]]; then
-              echo "::error::Stable release must advance" >&2; exit 1
+            n=$(( ${last%.*} * 10 + ${last#*.} + 1 ))
+            ver="$(( n / 10 )).$(( n % 10 ))"
+          fi
+          # PR APKs may share the latest stable version with an experimental suffix.
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && [ -n "$last" ]; then
+            max=$(printf '%s\n%s\n' "$last" "$ver" | sort -V | tail -1)
+            if [ "$max" != "$ver" ] || [ "$last" = "$ver" ]; then
+              echo "::error::Release $ver must advance past $last"; exit 1
             fi
           fi
-          {
-            echo "VERSION=$version"
-            echo "VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))"
-            echo "VERSION_SUFFIX=$suffix"
-            echo "RELEASE_TAG=$tag"
-            echo "APK_NAME=$apk"
-            echo "RELEASE_TITLE=$title"
-            echo "CHANNEL=$channel"
-          } >> "$GITHUB_ENV"
-          {
-            echo "# LocalAdb $version$suffix"
-            echo
-            echo "Changes:"
-            git log --no-merges --pretty='- %s' -15
-            echo
-            echo "Signed APK, verified with apksigner. Built from $GITHUB_SHA."
-          } > release-notes.md
+          echo "VERSION=$ver" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$(( 100000 + GITHUB_RUN_NUMBER ))" >> "$GITHUB_ENV"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "APK_NAME=$APP-PR-${{ github.event.pull_request.number }}-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          else
+            echo "APK_NAME=$APP-$ver" >> "$GITHUB_ENV"
+          fi
+          echo "Version: $ver (previous stable: ${last:-none})"
 
-      - name: Unit tests, Android lint and release compilation
+          # Release notes = commit titles since the previous release (or the last old-style build).
+          prev=""
+          if [ -n "$last" ]; then
+            # The public distribution tag may not exist locally. For a changelog,
+            # use a local source tag only when it exists.
+            git rev-parse -q --verify "refs/tags/v$last" >/dev/null && prev="v$last" || true
+          fi
+          [ -n "$prev" ] || prev=$(git tag -l 'build-*' | sort -V | tail -1 || true)
+          if [ -n "$prev" ]; then range="$prev..HEAD"; else range="HEAD"; fi
+          changes=$(git log --no-merges --pretty='- %s' $range | head -40)
+          [ -n "$changes" ] || changes="- Rebuild, no code changes"
+          {
+            echo "## $APP $ver"
+            echo "Version code: $(( 100000 + GITHUB_RUN_NUMBER ))"
+            echo
+            echo "### What's new"
+            echo "$changes"
+            echo
+            echo "### Install"
+            echo "Download the APK below and install it on your phone."
+            echo
+            echo "_Built from \`${GITHUB_SHA::7}\`${prev:+ · changes since \`$prev\`}_"
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Verify unit tests and Android lint
         env:
           N2K02_PACKAGES_TOKEN: ${{ secrets.N2K02_PACKAGES_TOKEN }}
-        shell: bash
         run: |
-          set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleRelease \
-            -PappVersion="$VERSION" \
-            -PappVersionCode="$VERSION_CODE" \
-            -PappVersionSuffix="$VERSION_SUFFIX"
+          ./gradlew --no-daemon testDebugUnitTest lintDebug || {
+            echo "::group::Android lint findings"
+            if [ -f app/build/reports/lint-results-debug.txt ]; then
+              cat app/build/reports/lint-results-debug.txt
+            else
+              echo "Lint text report not generated"
+            fi
+            echo "::endgroup::"
+            exit 1
+          }
 
-      - name: Sign release APK with existing encrypted signing bundle
+      - name: Build APK
         env:
           SIGNING_PASSPHRASE: ${{ secrets.SIGNING_PASSPHRASE }}
-        shell: bash
+          N2K02_PACKAGES_TOKEN: ${{ secrets.N2K02_PACKAGES_TOKEN }}
         run: |
-          set -euo pipefail
-          test -n "$SIGNING_PASSPHRASE" || { echo "::error::SIGNING_PASSPHRASE missing"; exit 1; }
-          enc="$RUNNER_TEMP/localadb-keys.tar.enc"
-          curl --fail --location --silent --show-error --retry 3 \
-            https://raw.githubusercontent.com/N2K02/MRadio/main/signing/keys.tar.enc \
-            --output "$enc"
-          test "$(git hash-object "$enc")" = "5203c1095062ad22099f76d319605ae5b79c0720" || {
-            echo "::error::Encrypted signing bundle checksum mismatch"; exit 1;
+          echo "Android SDK: ${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          yes | "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          chmod +x gradlew
+          set -o pipefail
+          VERSION_SUFFIX=""
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            VERSION_SUFFIX="-experimental.$GITHUB_RUN_NUMBER"
+          fi
+          ./gradlew --no-daemon testDebugUnitTest assemble$BUILD_VARIANT -PappVersion="$VERSION" -PappVersionCode="$VERSION_CODE" -PappVersionSuffix="$VERSION_SUFFIX" 2>&1 | tee build.log || {
+            # One annotation with the full error text (GitHub caps annotations per step at 10).
+            msg=$(grep -E '^e: |error:|What went wrong|Dependency .* requires|compileSdk|Android Gradle plugin' -A3 build.log | head -80 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
+            echo "::error title=Build failed::$msg"
+            exit 1
           }
-          keydir="$RUNNER_TEMP/localadb-signing"
-          mkdir -p "$keydir"
-          chmod 700 "$keydir"
-          trap 'rm -rf "$keydir" "$enc"' EXIT
-          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "$enc" -pass env:SIGNING_PASSPHRASE | tar -xf - -C "$keydir"
-          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
-          export RELEASE_PASS
-          RELEASE_PASS=$(cat "$keydir/release.pass")
-          "$build_tools/apksigner" sign \
-            --ks "$keydir/release.p12" --ks-pass env:RELEASE_PASS \
-            --ks-key-alias release --key-pass env:RELEASE_PASS \
-            --out "$APK_NAME" app/build/outputs/apk/release/app-release-unsigned.apk
-          "$build_tools/apksigner" verify --verbose "$APK_NAME"
-          sha256sum "$APK_NAME"
+          # Sign with the app's private key. It is stored encrypted in signing/keys.tar.enc and
+          # unlocked with the SIGNING_PASSPHRASE repository secret, only for this step.
+          # Key rotation: Android 9+ moves from the old (public test) key to the private key with
+          # a signed proof, so installed apps keep updating without reinstalling; the old key
+          # can no longer push updates there.
+          if [ -z "$SIGNING_PASSPHRASE" ]; then
+            echo "::error title=Missing signing secret::Add the SIGNING_PASSPHRASE secret: repo Settings > Secrets and variables > Actions > New repository secret"
+            exit 1
+          fi
+          K="$RUNNER_TEMP/keys"; mkdir -p "$K"; chmod 700 "$K"
+          # Shared encrypted signing material is pinned to the MRadio/AAYouTube blob.
+          ENC="$RUNNER_TEMP/localadb-keys.tar.enc"
+          curl --fail --location --silent --show-error --retry 3 --output "$ENC" "https://raw.githubusercontent.com/N2K02/MRadio/main/signing/keys.tar.enc"
+          test "$(git hash-object "$ENC")" = "5203c1095062ad22099f76d319605ae5b79c0720" || { echo "::error::Signing bundle hash mismatch"; exit 1; }
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "$ENC" -pass env:SIGNING_PASSPHRASE | tar -xf - -C "$K"
+          rm -f "$ENC"
+          BT=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* | sort -V | tail -1)
+          export RP=$(cat "$K/release.pass") OP=android
+          "$BT/apksigner" rotate --out "$K/lineage" \
+            --old-signer --ks "$K/old.keystore" --ks-pass env:OP --ks-key-alias androiddebugkey --key-pass env:OP \
+            --new-signer --ks "$K/release.p12" --ks-pass env:RP --ks-key-alias release --key-pass env:RP
+          # GitHub turns spaces in download names into dots, so the file is "<App>-<version>.apk".
+          "$BT/apksigner" sign \
+            --ks "$K/old.keystore" --ks-pass env:OP --ks-key-alias androiddebugkey --key-pass env:OP \
+            --next-signer --ks "$K/release.p12" --ks-pass env:RP --ks-key-alias release --key-pass env:RP \
+            --lineage "$K/lineage" --rotation-min-sdk-version 28 \
+            --out "$APK_NAME.apk" $APK_INPUT
+          rm -rf "$K"
+          "$BT/apksigner" verify --print-certs "$APK_NAME.apk" | grep -E "Signer.*(DN|SHA-256 digest)"
 
-      - name: Upload APK artifact
+      # Preserve the signed APK even if optional public distribution is unavailable.
+      - name: Upload signed APK (workflow artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: LocalAdb-${{ env.CHANNEL }}-${{ github.run_number }}
-          path: ${{ env.APK_NAME }}
+          name: ${{ env.APK_NAME }}
+          path: ${{ env.APK_NAME }}.apk
           if-no-files-found: error
 
-      - name: Publish GitHub experimental or stable release
+      - name: Publish signed APK to LocalAdb Releases
+        # Private releases are visible to repository collaborators only.
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        shell: bash
         run: |
           set -euo pipefail
-          if [[ "$CHANNEL" == "experimental" ]]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            tag="experimental-pr-$PR_NUMBER-run-$GITHUB_RUN_NUMBER"
+            title="LocalAdb experimental · PR #$PR_NUMBER · build #$GITHUB_RUN_NUMBER"
             target="$PR_HEAD_SHA"
-            flags=(--prerelease --latest=false)
+            extra=(--prerelease --latest=false)
           else
+            tag="v$VERSION"
+            title="LocalAdb $VERSION"
             target="$GITHUB_SHA"
-            flags=(--latest)
+            extra=(--latest)
           fi
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            if [[ "$CHANNEL" != "experimental" ]]; then
-              echo "::error::Stable release tag already exists"; exit 1
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              gh release upload "$tag" "$APK_NAME.apk" --repo "$GITHUB_REPOSITORY" --clobber
+              echo "Experimental release asset updated: $tag"
+            else
+              echo "::error::Stable release tag $tag already exists. Use a new version."
+              exit 1
             fi
-            gh release upload "$RELEASE_TAG" "$APK_NAME" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$RELEASE_TAG" "$APK_NAME" \
+            gh release create "$tag" "$APK_NAME.apk" \
               --repo "$GITHUB_REPOSITORY" --target "$target" \
-              --title "$RELEASE_TITLE" --notes-file release-notes.md "${flags[@]}"
+              --title "$title" --notes-file release-notes.md "${extra[@]}"
+            echo "Private release created: $tag"
           fi
 
       - name: Check public distribution configuration
@@ -158,14 +236,14 @@ jobs:
         env:
           DIST_TOKEN: ${{ secrets.ANDROID_DISTRIBUTION_TOKEN }}
         run: |
-          if [[ -n "$DIST_TOKEN" ]]; then
+          if [ -n "$DIST_TOKEN" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::ANDROID_DISTRIBUTION_TOKEN is unavailable; GitHub release APK remains available"
+            echo "::warning::ANDROID_DISTRIBUTION_TOKEN is not available. Signed APK is preserved as a workflow artifact, but the public stable/experimental update channels cannot be published until the secret is configured in this repository."
           fi
 
-      - name: Publish optional public update channel
+      - name: Publish stable or experimental APK to public distribution
         if: steps.distribution.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.ANDROID_DISTRIBUTION_TOKEN }}
