@@ -14,4 +14,4 @@ if [ ! -s "$JAR" ]; then
   mv "$TEMP" "$JAR"
 fi
 [ "$(git hash-object "$JAR")" = "$EXPECTED" ] || { echo "Gradle wrapper checksum mismatch" >&2; exit 1; }
-exec java -Dorg.gradle.appname=LocalAdb -jar "$JAR" "$@"
+exec java -Dorg.gradle.appname=LocalAdb -classpath "$JAR" org.gradle.wrapper.GradleWrapperMain "$@"
