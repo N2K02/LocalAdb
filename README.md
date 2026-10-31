@@ -1,25 +1,19 @@
 # LocalAdb
 
-Android starter built with Kotlin, Jetpack Compose, Material 3 Expressive, `n2k02theme` and `n2k02updater`.
+An Android Compose app with a built-in local ADB client, using the shared n2k02theme and n2k02updater libraries. Includes Home, Settings, Quit and Settings → ADB connection / Updates.
 
-## Current scope
-- Home dashboard (placeholder: no ADB operations are enabled yet).
-- Canonical single header and Home / Settings / Quit bottom navigation.
-- Settings > Diagnostics, Logs, About & Updates.
-- In-app opt-in, bounded, redacted log viewer; clipboard export.
-- Shared stable / experimental updater.
-- Unit tests, lint, CI builds, signed APK prereleases on experimental PRs, and stable releases on merge to `main`.
+## First setup (Android 11+)
 
-## Build
-Use JDK 17 and Android SDK Platform 37.0 (package `platforms;android-37.0`). Set `N2K02_PACKAGES_TOKEN` to a read-only GitHub Packages token with access to `n2k02theme` and `n2k02updater`.
+1. Turn on Developer options → Wireless debugging. Android must be on Wi-Fi to initiate wireless pairing.
+2. In LocalAdb open Settings → ADB connection → **Find / Retry**.
+3. Open Android's **Pair device with pairing code** dialog. Enter the six-digit code in LocalAdb, or explicitly enable the app's Accessibility service to read *only* Android Settings' pairing dialog. The pairing code is never persisted or logged.
+4. ADB verifies the **shell UID 2000** before reporting Ready. When enabled, the verified shell switches adbd to localhost TCP/5555 and reconnects; otherwise it uses the local TLS listener.
+5. The connection watchdog attempts authorized recovery; Start on boot schedules an optional WorkManager recovery. Reboot restore is *disabled by default* because it requires Android's WRITE_SECURE_SETTINGS development permission and explicit user consent. The app never overrides a manual Wireless debugging off action within the same boot.
 
-```sh
-./gradlew testDebugUnitTest lintDebug assembleDebug
-```
+**Security:** The app only connects to 127.0.0.1, and NSD-discovered services must belong to the current device. It does not expose a remote ADB server of its own. **TCP/5555 can be network-accessible on the device**; use Disable TCP/5555 when you don't need it.
 
-The wrapper launcher downloads mRadio's **pinned** Gradle wrapper JAR on the first run and verifies its Git blob checksum. The JAR is intentionally not checked in.
+**Limits:** Android's system setting, user authorization and Wi-Fi state cannot be bypassed. Background execution and reboot restore depend on Android's own restrictions and permissions. No VRec recording daemon or call-recording services are included.
 
-## Release
-Open or update the single experimental PR to `main`. A successful PR build produces a signed APK artifact and an experimental GitHub prerelease. Once reviewed, merge the PR to trigger the stable release on `main`. The workflow uses `SIGNING_PASSPHRASE` for the shared, encrypted signing material and optionally `ANDROID_DISTRIBUTION_TOKEN` to publish to the public `localadb/updates` channel. Plaintext signing keys never enter source control.
+## Build and releases
 
-This is a **template only**; it does not claim ADB connectivity, pairing, command execution, or background tunnelling.
+The experimental PR uses the shared Android build, lint/test, Dependabot and experimental prerelease workflow. Merge into main for the stable release. This app retains the existing signing secrets and distribution configuration.

@@ -10,21 +10,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         LiveUpdater.init(applicationContext)
+        AdbEngine.start(applicationContext, explicit = true)
         enableEdgeToEdge()
-        appLog.append("App created")
-        setContent {
-            N2K02Theme {
-                LocalAdbScreen(onQuit = ::quit)
-            }
-        }
+        setContent { N2K02Theme { LocalAdbScreen(onQuit = ::quit) } }
     }
-
     override fun onResume() {
         super.onResume()
         LiveUpdater.onResume(this)
     }
-
     private fun quit() {
+        AdbEngine.shutdown(applicationContext)
         LiveUpdater.shutdown()
         appLog.shutdown()
         finishAndRemoveTask()

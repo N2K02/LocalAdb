@@ -1,1 +1,2 @@
-<resources><string name="app_name">LocalAdb</string></resources>
+<resources><string name="app_name">LocalAdb</string>    <string name="adb_accessibility_description">Optional: only reads the Android Settings pairing code dialog to connect the local ADB client.</string>
+</resources>

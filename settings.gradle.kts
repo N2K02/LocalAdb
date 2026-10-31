@@ -6,6 +6,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
         val token = providers.environmentVariable("N2K02_PACKAGES_TOKEN").orNull
         require(!token.isNullOrBlank()) { "N2K02_PACKAGES_TOKEN is required for the shared libraries" }
         listOf("n2k02theme" to "theme", "n2k02updater" to "updater").forEach { (repo, artifact) ->

@@ -5,23 +5,24 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class NavigationTest {
-    @Test fun allSubpagesReturnToSettings() {
-        listOf(Page.DIAGNOSTICS, Page.LOGS, Page.UPDATES)
-            .forEach { assertEquals(Page.SETTINGS, Navigation.back(it)) }
+    @Test fun subpagesReturnToSettings() {
+        listOf(Page.ADB, Page.UPDATES).forEach {
+            assertEquals(Page.SETTINGS, Navigation.back(it))
+        }
     }
-    @Test fun settingsBackReturnsHome() {
+    @Test fun backFromSettingsReturnsHome() {
         assertEquals(Page.HOME, Navigation.back(Page.SETTINGS))
         assertEquals(Page.HOME, Navigation.back(Page.HOME))
     }
-    @Test fun choosingTabsAlwaysResetsSubpage() {
+    @Test fun tabSwitchResetsSubpages() {
         Page.entries.forEach { page ->
             assertEquals(Page.HOME, Navigation.selectTab(page, Page.HOME))
             assertEquals(Page.SETTINGS, Navigation.selectTab(page, Page.SETTINGS))
         }
     }
-    @Test fun subpageCannotBeSelectedAsTab() {
+    @Test fun adbIsOnlyASubpage() {
         assertThrows(IllegalArgumentException::class.java) {
-            Navigation.selectTab(Page.HOME, Page.LOGS)
+            Navigation.selectTab(Page.HOME, Page.ADB)
         }
     }
 }
