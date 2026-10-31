@@ -1,0 +1,62 @@
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+val appVersion = (findProperty("appVersion") as String?) ?: "1.0"
+require(Regex("""\d+\.\d""").matches(appVersion)) { "Version must be one decimal place" }
+val appVersionCode = (findProperty("appVersionCode") as String?)?.toIntOrNull()
+    ?: appVersion.split('.').let { it[0].toInt() * 10 + it[1].toInt() }
+val appVersionSuffix = (findProperty("appVersionSuffix") as String?) ?: ""
+
+android {
+    namespace = "dev.n2k02.localadb"
+    compileSdk = 37
+    defaultConfig {
+        applicationId = "dev.n2k02.localadb"
+        minSdk = 26
+        targetSdk = 37
+        versionCode = appVersionCode
+        versionName = appVersion + appVersionSuffix
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    buildTypes {
+        getByName("debug") { versionNameSuffix = "-debug" }
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+    buildFeatures { compose = true; buildConfig = true }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    testOptions { unitTests.isReturnDefaultValues = true }
+}
+dependencies {
+    implementation("dev.n2k02:theme:0.1.4")
+    implementation("dev.n2k02:updater:0.1.19")
+    implementation("androidx.compose.material3:material3:1.5.0-beta01")
+    implementation("androidx.compose.material:material-icons-extended:1.7.8")
+    implementation("androidx.activity:activity-compose:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    testImplementation("junit:junit:4.13.2")
+}
+val verifySharedUpdaterVersion = tasks.register("verifySharedUpdaterVersion") {
+    group = "verification"
+    doLast {
+        val versions = configurations.filter { it.name == "implementation" }
+            .flatMap { it.dependencies }
+            .filter { it.group == "dev.n2k02" && it.name == "updater" }
+            .mapNotNull { it.version }
+        check(versions.isNotEmpty() && versions.all {
+            val v = it.split('.').map(String::toIntOrNull)
+            v.size == 3 && v.all { n -> n != null } &&
+                (v[0]!! > 0 || v[1]!! > 1 || (v[1] == 1 && v[2]!! >= 19))
+        }) { "Use pinned updater >= 0.1.19" }
+    }
+}
+tasks.matching { it.name == "preBuild" || it.name == "check" }.configureEach {
+    dependsOn(verifySharedUpdaterVersion)
+}
