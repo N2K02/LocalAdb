@@ -19,6 +19,7 @@ class AdbPairingAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null) return
         if (!AdbSettings.get(this, AdbSettings.Option.AUTO_PAIR) ||
             AdbEngine.status.value.pairingPort == null ||
             !PairingCodePolicy.isSystemSettings(event?.packageName?.toString())) return
