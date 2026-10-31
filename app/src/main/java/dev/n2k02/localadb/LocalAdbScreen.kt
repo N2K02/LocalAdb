@@ -66,7 +66,7 @@ private fun titleFor(page: Page): String = when (page) {
     Page.SETTINGS -> "Settings"
     Page.DIAGNOSTICS -> "Diagnostics"
     Page.LOGS -> "Logs"
-    Page.UPDATES -> "About & updates"
+    Page.UPDATES -> "Updates"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -184,7 +184,7 @@ private fun SettingsPage(modifier: Modifier, hasUpdate: Boolean, onNavigate: (Pa
             modifier = Modifier.clickable { onNavigate(Page.LOGS) },
         )
         ListItem(
-            headlineContent = { Text("About & updates") },
+            headlineContent = { Text("Updates") },
             supportingContent = { Text(if (hasUpdate) "An update is available" else "Version and release channels") },
             leadingContent = { Icon(Icons.Rounded.SystemUpdate, contentDescription = null) },
             trailingContent = { if (hasUpdate) N2K02UpdateBadge(LiveUpdater.controller.status.collectAsState().value) },
