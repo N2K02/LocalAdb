@@ -153,8 +153,21 @@ jobs:
               --title "$RELEASE_TITLE" --notes-file release-notes.md "${flags[@]}"
           fi
 
+      - name: Check public distribution configuration
+        id: distribution
+        env:
+          DIST_TOKEN: ${{ secrets.ANDROID_DISTRIBUTION_TOKEN }}
+        run: |
+          if [[ -n "$DIST_TOKEN" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANDROID_DISTRIBUTION_TOKEN is unavailable; GitHub release APK remains available"
+          fi
+
       - name: Publish optional public update channel
+        if: steps.distribution.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ secrets.ANDROID_DISTRIBUTION_TOKEN }}
-        if: env.GH_TOKEN != ''
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash .github/scripts/publish-distribution.sh
