@@ -79,7 +79,7 @@ class ShizukuLifecycleTest {
         assertTrue(provider.contains("Binder.getCallingUid() != Process.SHELL_UID"))
         assertTrue(provider.contains("setOf(\"embedded\", \"starter\", \"rish\")"))
         assertTrue(provider.contains("ZipInputStream"))
-        assertTrue(provider.contains("Build.SUPPORTED_ABIS.firstOrNull()"))
+        assertTrue(provider.contains("ShizukuNativeLibraries.select(Build.SUPPORTED_ABIS.toList())"))
         assertTrue(provider.contains("libshizuku.so"))
     }
 
@@ -97,7 +97,7 @@ class ShizukuLifecycleTest {
         val source = java.io.File(
             "src/main/java/dev/n2k02/localadb/ShizukuPayloadProvider.kt").readText()
         assertTrue(source.contains("ParcelFileDescriptor.open(target, ParcelFileDescriptor.MODE_READ_ONLY)"))
-        assertTrue(source.contains("EMBEDDED_SHA256"))
+        assertTrue(source.contains("EXPECTED_SHA256"))
         assertTrue(source.contains("digest.digest()"))
         assertTrue(source.contains("target.isFile"))
         assertTrue(source.contains("output.fd.sync()"))
