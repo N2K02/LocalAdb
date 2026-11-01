@@ -114,10 +114,10 @@ class AppAccessPolicyTest {
             "src/main/java/dev/n2k02/localadb/AppsPage.kt"
         ).readText()
         assertTrue(source.contains("AlertDialog("))
-        assertTrue(source.contains("Managed by Shizuku") ||
-            source.contains("managed by Shizuku"))
-        assertTrue(source.contains("Authorization: managed by Shizuku"))
-        assertTrue(source.contains("openShizukuManager"))
+        assertTrue(source.contains("NativeShizukuManager.granted(context, app.uid)"))
+        assertTrue(source.contains("NativeShizukuManager.changeGrant("))
+        assertTrue(source.contains("native.serviceReady"))
+        assertFalse(source.contains("openShizukuManager"))
         assertTrue(source.contains("changeAndroidGrant("))
     }
 }
