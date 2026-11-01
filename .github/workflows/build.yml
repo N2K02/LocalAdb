@@ -153,12 +153,17 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             VERSION_SUFFIX="-experimental.$GITHUB_RUN_NUMBER"
           fi
-          ./gradlew --no-daemon testDebugUnitTest assemble$BUILD_VARIANT -PappVersion="$VERSION" -PappVersionCode="$VERSION_CODE" -PappVersionSuffix="$VERSION_SUFFIX" 2>&1 | tee build.log || {
+          # Also minify the Release variant on every experimental PR: Debug builds
+          # cannot reveal reflection constructors stripped by R8.
+          ./gradlew --no-daemon testDebugUnitTest assemble$BUILD_VARIANT assembleRelease -PappVersion="$VERSION" -PappVersionCode="$VERSION_CODE" -PappVersionSuffix="$VERSION_SUFFIX" 2>&1 | tee build.log || {
             # One annotation with the full error text (GitHub caps annotations per step at 10).
             msg=$(grep -E '^e: |error:|What went wrong|Dependency .* requires|compileSdk|Android Gradle plugin' -A3 build.log | head -80 | sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
             echo "::error title=Build failed::$msg"
             exit 1
           }
+          # Inspect the minified DEX before signing/publishing. AndroidX Startup
+          # instantiates WorkDatabase_Impl reflectively before the Activity loads.
+          python3 scripts/verify_release_workmanager.py app/build/outputs/apk/release/app-release-unsigned.apk
           # Sign with the app's private key. It is stored encrypted in signing/keys.tar.enc and
           # unlocked with the SIGNING_PASSPHRASE repository secret, only for this step.
           # Key rotation: Android 9+ moves from the old (public test) key to the private key with
