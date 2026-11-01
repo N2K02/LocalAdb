@@ -80,7 +80,10 @@ class ShizukuLifecycleTest {
         assertTrue(provider.contains("setOf(\"embedded\", \"starter\", \"rish\")"))
         assertTrue(provider.contains("ZipInputStream"))
         assertTrue(provider.contains("ShizukuNativeLibraries.select(Build.SUPPORTED_ABIS.toList())"))
-        assertTrue(provider.contains("libshizuku.so"))
+        val mapping = java.io.File(
+            "src/main/java/dev/n2k02/localadb/ShizukuNativeLibraries.kt").readText()
+        assertTrue(mapping.contains("/libshizuku.so"))
+        assertTrue(mapping.contains("/librish.so"))
     }
 
     @Test fun upstreamStarterMustNotBeBackgroundedTwice() {
