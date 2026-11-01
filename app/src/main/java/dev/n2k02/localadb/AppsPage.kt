@@ -211,6 +211,9 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
         }
         if (scanError == null) {
             items(visible, key = { it.packageName + "#" + it.uid }) { app ->
+                var androidExpanded by remember(app.packageName, grantFilter) {
+                    mutableStateOf(grantFilter != null)
+                }
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -263,10 +266,23 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                         }
                         if (app.declaredAdbPermissions.isNotEmpty()) {
                             HorizontalDivider()
-                            Text("Android permissions (verified)",
-                                style = MaterialTheme.typography.titleSmall)
+                            Row(Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Android permissions · " +
+                                        app.declaredAdbPermissions.size,
+                                        style = MaterialTheme.typography.titleSmall)
+                                    Text(app.grantedAdbPermissions.size.toString() + " granted",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                TextButton(onClick = { androidExpanded = !androidExpanded }) {
+                                    Text(if (androidExpanded) "Hide" else "Show")
+                                }
+                            }
                         }
-                        for (permission in app.declaredAdbPermissions) {
+                        if (androidExpanded) for (permission in app.declaredAdbPermissions) {
                             val granted = permission in app.grantedAdbPermissions
                             val grantable = permission in app.grantableAdbPermissions
                             val changingThis = changing == app.packageName + "#" + permission

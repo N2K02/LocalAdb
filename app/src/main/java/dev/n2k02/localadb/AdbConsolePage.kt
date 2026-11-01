@@ -81,14 +81,24 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
     var confirmClear by remember { mutableStateOf(false) }
     var confirmBookmark by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
+    val filtered = remember(console.entries, search) {
+        if (search.isBlank()) console.entries
+        else console.entries.filter {
+            it.command.contains(search, ignoreCase = true) ||
+                it.output.contains(search, ignoreCase = true) ||
+                it.error?.contains(search, ignoreCase = true) == true
+        }
+    }
     val clipboard = remember(context) {
         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     }
 
     LaunchedEffect(Unit) { AdbConsole.loadBookmarks(context) }
-    LaunchedEffect(console.entries.size, search) {
-        if (console.entries.isNotEmpty() && search.isBlank())
-            list.animateScrollToItem(console.entries.size - 1)
+    LaunchedEffect(filtered.size, search) {
+        // Never scroll to an index removed by the search filter.
+        if (filtered.isNotEmpty() && search.isBlank()) {
+            list.animateScrollToItem(filtered.lastIndex)
+        }
     }
 
     fun paste() {
@@ -132,36 +142,22 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("ADB shell", style = MaterialTheme.typography.headlineSmall)
+            Row(
+                Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.VerifiedUser, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp))
                 Text(
-                    if (status.connected) "Connected · shell UID 2000"
-                    else "Not connected · authorize Android ADB",
+                    if (status.connected) "Shell UID 2000 · Ready"
+                    else "ADB disconnected",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            OutlinedButton(onClick = onOpenConnection) {
-                Text(if (status.connected) "Connection" else "Connect")
-            }
-        }
-
-        if (!status.connected) {
-            Card(Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(Icons.Rounded.VerifiedUser, contentDescription = null)
-                    Column(Modifier.weight(1f)) {
-                        Text("A verified shell UID 2000 is required")
-                        Text("Pair or reconnect in ADB connection settings.",
-                            style = MaterialTheme.typography.bodySmall)
-                    }
-                    TextButton(onClick = onOpenConnection) { Text("Connect") }
-                }
-            }
+            OutlinedButton(onClick = onOpenConnection) { Text("Connection") }
         }
 
         if (searchOpen) {
@@ -207,8 +203,7 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 Text("Executing through authorized ADB shell…",
                     style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = { AdbConsole.interrupt() }) { Text("Stop") }
+                // Stop is already available in the command field's trailing icon.
             }
         }
         console.notice?.let {
@@ -216,15 +211,6 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                 style = MaterialTheme.typography.bodySmall)
         }
         HorizontalDivider()
-
-        val filtered = remember(console.entries, search) {
-            if (search.isBlank()) console.entries
-            else console.entries.filter {
-                it.command.contains(search, true) ||
-                    it.output.contains(search, true) ||
-                    it.error?.contains(search, true) == true
-            }
-        }
 
         if (filtered.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -286,15 +272,10 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Commands may modify this device. History and output stay in memory.",
+            Text("Shell UID 2000 can modify this device · output stays on device.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f))
-            OutlinedButton(onClick = { paste() }) {
-                Icon(Icons.Rounded.ContentPaste, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-                Text("Paste")
-            }
         }
     }
 

@@ -6,15 +6,25 @@ header and VRec-style Home status cards.
 
 ## Navigation
 
-- Home: verified UID 2000, pairing/TCP state, native Shizuku server health,
-  eligible Android permission grants and shortcuts.
-- Adb: aShell You-inspired internal command console with output/exit codes,
+- **Home**: three compact read-only cards for ADB/pairing/transport/UID 2000,
+  native Shizuku health, and automated Android permission verification.
+  Actions and navigation shortcuts are deliberately not duplicated here.
+- **Apps**: Shizuku clients shown first, with searchable User/System/Disabled/
+  Hidden and Android grant filters, verified local Shizuku permissions,
+  individually confirmed Android developer permissions, and expandable
+  per-app Android permission details.
+- **Adb**: aShell You-inspired internal command console with output/exit codes,
   searchable bounded history, bookmarks, copy/paste and interrupt.
-- Settings > ADB connection: pairing, watchdog, boot/reboot restore, TCP/5555.
-- Settings > Apps: native Shizuku access controls separate from the verified
-  Android developer-permission grant/revoke controls.
-- Settings > Updates: shared updater. Logs and Diagnostics removed.
-- Quit: interrupts commands, stops native Shizuku, cancels recovery and closes ADB.
+- **Settings > ADB connection**: pairing, watchdog, boot/reboot restore,
+  TCP/5555. This remains a submenu; the console is the main Adb tab.
+- **Settings > Updates**: shared updater. No duplicate Apps or Adb commands
+  entry in Settings; Logs and Diagnostics remain hidden.
+- **Quit**: interrupts commands, stops native Shizuku, cancels recovery
+  and closes ADB.
+
+Main navigation order: **Home · Apps · Adb · Settings · Quit**.
+The page header has one aligned icon/title and a compact, constrained
+LocalAdb logo/name; it never renders the 108dp launcher icon full-size.
 
 ## Native Shizuku (no extra manager app installed)
 

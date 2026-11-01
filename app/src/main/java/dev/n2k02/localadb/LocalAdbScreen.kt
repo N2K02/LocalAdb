@@ -11,6 +11,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
@@ -22,6 +25,7 @@ import dev.n2k02.updater.hasPendingUpdate
 
 private fun iconFor(page: Page): ImageVector = when (page) {
     Page.HOME -> Icons.Rounded.Home
+    Page.APPS -> Icons.Rounded.Apps
     Page.ADB -> Icons.Rounded.Terminal
     Page.SETTINGS -> Icons.Rounded.Settings
     Page.ADB_CONNECTION -> Icons.Rounded.Wifi
@@ -31,6 +35,7 @@ private fun iconFor(page: Page): ImageVector = when (page) {
 
 private fun titleFor(page: Page): String = when (page) {
     Page.HOME -> "Home"
+    Page.APPS -> "Apps"
     Page.ADB -> "Adb"
     Page.SETTINGS -> "Settings"
     Page.ADB_CONNECTION -> "ADB connection"
@@ -49,15 +54,27 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(iconFor(page), contentDescription = null)
-                        Text(titleFor(page), style = MaterialTheme.typography.titleLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(iconFor(page), contentDescription = null,
+                            modifier = Modifier.size(24.dp))
+                        Text(titleFor(page), style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 },
                 actions = {
-                    Icon(painterResource(R.drawable.ic_localadb), contentDescription = null)
-                    Text("LocalAdb", modifier = Modifier.padding(end = 16.dp),
-                        style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        modifier = Modifier.padding(end = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Constrain the 108dp launcher vector; otherwise it hides page titles.
+                        Icon(painterResource(R.drawable.ic_localadb),
+                            contentDescription = "LocalAdb",
+                            modifier = Modifier.size(25.dp), tint = Color.Unspecified)
+                        Text("LocalAdb", style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1)
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
@@ -70,12 +87,17 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
                     icon = { Icon(Icons.Rounded.Home, contentDescription = null) },
                     label = { Text("Home") })
                 NavigationBarItem(
+                    selected = page == Page.APPS,
+                    onClick = { page = Navigation.selectTab(page, Page.APPS) },
+                    icon = { Icon(Icons.Rounded.Apps, contentDescription = null) },
+                    label = { Text("Apps") })
+                NavigationBarItem(
                     selected = page == Page.ADB,
                     onClick = { page = Page.ADB },
                     icon = { Icon(Icons.Rounded.Terminal, contentDescription = "ADB shell") },
                     label = { Text("Adb") })
                 NavigationBarItem(
-                    selected = page !in listOf(Page.HOME, Page.ADB),
+                    selected = page in listOf(Page.SETTINGS, Page.ADB_CONNECTION, Page.UPDATES),
                     onClick = { page = Page.SETTINGS },
                     icon = {
                         N2K02UpdateBadgedIcon(updates) {
@@ -92,10 +114,7 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
         }
     ) { inset ->
         when (page) {
-            Page.HOME -> HomePage(Modifier.padding(inset),
-                onOpenAdb = { page = Page.ADB_CONNECTION },
-                onOpenShell = { page = Page.ADB },
-                onOpenApps = { page = Page.APPS })
+            Page.HOME -> HomePage(Modifier.padding(inset))
             Page.ADB -> AdbConsolePage(Modifier.padding(inset)) {
                 page = Page.ADB_CONNECTION
             }
@@ -110,104 +129,108 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
 }
 
 @Composable
-private fun HomePage(
-    modifier: Modifier,
-    onOpenAdb: () -> Unit,
-    onOpenShell: () -> Unit,
-    onOpenApps: () -> Unit,
-) {
+private fun HomePage(modifier: Modifier) {
     val connection by AdbEngine.status.collectAsState()
     val shizuku by NativeShizukuManager.state.collectAsState()
     val permissions by AdbPermissionBootstrap.state.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
 
+    // Home is read-only. The Apps tab, Adb tab and Settings own their actions.
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("System status", style = MaterialTheme.typography.titleLarge)
-                Text(
-                    if (connection.connected) "ADB ready · verified shell UID 2000"
-                    else "ADB not connected",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    HomeStatus("ADB", if (connection.connected) "Ready" else "Offline",
-                        Modifier.weight(1f))
-                    HomeStatus("Pairing", if (connection.pairingPort != null) "Found"
-                        else if (connection.connected) "Paired" else "Waiting", Modifier.weight(1f))
-                    HomeStatus("Transport", if (connection.tcpConnected) "TCP"
-                        else if (connection.connected) "TLS" else "—", Modifier.weight(1f))
-                    HomeStatus("Shell UID", if (connection.connected) "2000" else "—",
-                        Modifier.weight(1f))
-                }
-                Text(connection.message, style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = { AdbEngine.start(context, explicit = true) }) {
-                        Text(if (connection.connected) "Retry" else "Connect")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Wifi, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary)
+                        Text("ADB connection", style = MaterialTheme.typography.titleMedium)
                     }
-                    OutlinedButton(onClick = onOpenAdb) { Text("ADB settings") }
+                    StatusLabel(if (connection.connected) "Ready" else "Offline",
+                        connection.connected)
                 }
-            }
-        }
-
-        Card(Modifier.fillMaxWidth().clickable(onClick = onOpenApps)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.Security, contentDescription = null)
-                    Text("Native Shizuku server", style = MaterialTheme.typography.titleMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HomeStatus("Shell", if (connection.connected) "2000" else "—",
+                        Modifier.weight(1f))
+                    HomeStatus("Pairing", when {
+                        connection.connected -> "Paired"
+                        connection.pairingPort != null -> "Found"
+                        else -> "Waiting"
+                    }, Modifier.weight(1f))
+                    HomeStatus("Transport", when {
+                        connection.tcpConnected -> "TCP"
+                        connection.connected -> "TLS"
+                        else -> "—"
+                    }, Modifier.weight(1f))
+                    HomeStatus("Discovery", if (connection.scanning) "Scan" else "Idle",
+                        Modifier.weight(1f))
                 }
-                Text(if (shizuku.serviceReady) "Ready · shell UID 2000"
-                    else if (shizuku.starting) "Starting embedded server…"
-                    else "Not running")
-                Text(shizuku.message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Manage Shizuku app approvals",
-                    color = MaterialTheme.colorScheme.primary)
+                Text(connection.message, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         }
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.VerifiedUser, contentDescription = null)
-                    Text("Automatic Android permissions",
-                        style = MaterialTheme.typography.titleMedium)
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Security, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary)
+                        Text("Shizuku server", style = MaterialTheme.typography.titleMedium)
+                    }
+                    StatusLabel(when {
+                        shizuku.serviceReady -> "Ready"
+                        shizuku.starting -> "Starting"
+                        else -> "Offline"
+                    }, shizuku.serviceReady)
                 }
-                Text(if (!permissions.finished) "Waiting for verified ADB shell"
+                Text(shizuku.message, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.VerifiedUser, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary)
+                    Text("Android permissions", style = MaterialTheme.typography.titleMedium)
+                }
+                Text(
+                    if (!permissions.finished) "Waiting for verified shell UID 2000"
                     else permissions.granted.size.toString() + " granted · " +
-                        permissions.unavailable.size + " unavailable")
-                if (permissions.unavailable.isNotEmpty())
-                    Text(permissions.unavailable.joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        Card(Modifier.fillMaxWidth().clickable(onClick = onOpenShell)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.Terminal, contentDescription = null)
-                    Text("ADB commands", style = MaterialTheme.typography.titleMedium)
+                        permissions.unavailable.size + " unavailable",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                if (permissions.unavailable.isNotEmpty()) {
+                    Text(permissions.unavailable.joinToString(" · ") {
+                        it.substringAfterLast('.')
+                    }, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
-                Text("Run commands on this device with the verified UID 2000 shell.",
-                    style = MaterialTheme.typography.bodySmall)
-                Text("Open command console", color = MaterialTheme.colorScheme.primary)
             }
         }
+    }
+}
 
-        Card(Modifier.fillMaxWidth().clickable(onClick = onOpenApps)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.Apps, contentDescription = null)
-                    Text("App access", style = MaterialTheme.typography.titleMedium)
-                }
-                Text("Android permission grants and existing Shizuku manager access.",
-                    style = MaterialTheme.typography.bodySmall)
-                Text("Open Apps", color = MaterialTheme.colorScheme.primary)
-            }
-        }
+@Composable
+private fun StatusLabel(label: String, isReady: Boolean) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = if (isReady) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (isReady) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
     }
 }
 
@@ -216,16 +239,15 @@ private fun HomeStatus(label: String, value: String, modifier: Modifier = Modifi
     Surface(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.medium
     ) {
-        Column(
-            Modifier.padding(vertical = 12.dp, horizontal = 2.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
+        Column(Modifier.padding(vertical = 10.dp, horizontal = 2.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, maxLines = 1, style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                textAlign = TextAlign.Center)
             Text(value, maxLines = 1, style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                textAlign = TextAlign.Center)
         }
     }
 }
@@ -244,11 +266,6 @@ private fun SettingsPage(modifier: Modifier, hasUpdate: Boolean, onNavigate: (Pa
             supportingContent = { Text("Pairing, verified shell, automatic recovery and TCP/5555") },
             leadingContent = { Icon(Icons.Rounded.Wifi, contentDescription = null) },
             modifier = Modifier.clickable { onNavigate(Page.ADB_CONNECTION) })
-        ListItem(
-            headlineContent = { Text("Apps") },
-            supportingContent = { Text("Android developer permissions and Shizuku-compatible apps") },
-            leadingContent = { Icon(Icons.Rounded.Apps, contentDescription = null) },
-            modifier = Modifier.clickable { onNavigate(Page.APPS) })
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
         ListItem(
             headlineContent = { Text("Updates") },
