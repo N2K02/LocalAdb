@@ -89,7 +89,7 @@ internal object AppAccessPolicy {
                     false -> app.declaredAdbPermissions.any { it !in app.grantedAdbPermissions }
                     null -> true
                 }
-        }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label }
+        }.sortedWith(compareBy<AppAccess> { it.label.lowercase(java.util.Locale.ROOT) }
             .thenBy { it.packageName }.thenBy { it.uid })
     }
 }
