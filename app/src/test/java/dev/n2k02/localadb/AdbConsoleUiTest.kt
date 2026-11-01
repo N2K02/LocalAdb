@@ -33,9 +33,21 @@ class AdbConsoleUiTest {
         assertTrue(code.contains("DashboardTone.GOOD"))
     }
 
+    @Test fun completionOnlyInsertsAndDoesNotExecute() {
+        val code = source()
+        assertTrue(code.contains("AdbCommandCompletion.suggestions("))
+        assertTrue(code.contains("AdbCommandCompletion.apply("))
+        assertTrue(code.contains("TextFieldValue.Saver"))
+        assertTrue(code.contains("onPreviewKeyEvent"))
+        assertTrue(code.contains("Key.Tab"))
+        assertTrue(code.contains("Tap or Tab"))
+        assertTrue(code.contains("AdbCompletionIndexLoader.load(context)"))
+        assertTrue(code.contains("suppressSuggestionsFor = input.text"))
+    }
+
     @Test fun commandHistoryBookmarksAndAbortAreRetained() {
         val code = source()
-        assertTrue(code.contains("AdbConsole.execute(input)"))
+        assertTrue(code.contains("AdbConsole.execute(input.text)"))
         assertTrue(code.contains("AdbConsole.interrupt()"))
         assertTrue(code.contains("AdbConsole.loadBookmarks(context)"))
         assertTrue(code.contains("Search command output"))

@@ -22,7 +22,14 @@ header and VRec-style Home status cards.
 - **Adb**: aShell You-inspired command console with a colored connection
   status card, a dedicated command-entry card, and green/red result cards
   showing actual exit codes; searchable bounded history, bookmarks,
-  copy/paste and interrupt are preserved.
+  copy/paste and interrupt are preserved. **Inline, context-aware autocomplete**
+  suggests shell commands, installed package names, and Android permission
+  names as you type. Tap a suggestion or press Tab on a physical keyboard
+  to insert it at the cursor without executing anything. Saved bookmarks and
+  recent session commands are suggested before built-in command examples.
+  Package names and declared permissions are loaded read-only from Android's
+  PackageManager; no additional ADB shell commands or Shizuku calls occur
+  while typing. Enter/Send still explicitly runs the chosen command.
 - **Settings > ADB connection**: pairing, watchdog, boot/reboot restore,
   TCP/5555. This remains a submenu; the console is the main Adb tab.
 - **Settings > Updates**: shared updater. No duplicate Apps or Adb commands

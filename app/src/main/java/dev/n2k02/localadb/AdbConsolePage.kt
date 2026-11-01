@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -38,6 +40,9 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.SettingsEthernet
 import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -54,9 +59,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -64,6 +71,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -77,13 +95,50 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
     val context = LocalContext.current
     val status by AdbEngine.status.collectAsState()
     val console by AdbConsole.state.collectAsState()
-    var input by rememberSaveable { mutableStateOf("") }
+    var input by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
+    var suppressSuggestionsFor by remember { mutableStateOf<String?>(null) }
+    var completionIndex by remember { mutableStateOf(CompletionIndex()) }
+    var indexRefresh by remember { mutableIntStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) indexRefresh++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(context, indexRefresh) {
+        try {
+            // Read only, never invokes ADB or Shizuku while a user is typing.
+            completionIndex = AdbCompletionIndexLoader.load(context)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            completionIndex = CompletionIndex()
+        }
+    }
+
     var search by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var picker by remember { mutableStateOf<String?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
     var confirmBookmark by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
+    val completions = remember(input.text, input.selection, completionIndex,
+        console.history, console.bookmarks, console.running, searchOpen,
+        suppressSuggestionsFor) {
+        if (console.running || searchOpen || !input.selection.collapsed ||
+            suppressSuggestionsFor == input.text) emptyList()
+        else AdbCommandCompletion.suggestions(
+            input = input.text,
+            cursor = input.selection.end,
+            index = completionIndex,
+            history = console.history,
+            bookmarks = console.bookmarks,
+        )
+    }
     val filtered = remember(console.entries, search) {
         if (search.isBlank()) console.entries
         else console.entries.filter {
@@ -108,18 +163,30 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
         val clip = clipboard.primaryClip
         val value = if (clip != null && clip.itemCount > 0)
             clip.getItemAt(0).coerceToText(context)?.toString().orEmpty() else ""
-        if (value.isNotBlank()) input = value.take(AdbConsoleProtocol.MAX_COMMAND_CHARS)
+        if (value.isNotBlank()) {
+            val pasted = value.take(AdbConsoleProtocol.MAX_COMMAND_CHARS)
+            input = TextFieldValue(pasted, selection = TextRange(pasted.length))
+            suppressSuggestionsFor = null
+        }
     }
     fun execute() {
         if (!status.connected) onOpenConnection()
-        else AdbConsole.execute(input)
+        else {
+            suppressSuggestionsFor = input.text
+            AdbConsole.execute(input.text)
+        }
+    }
+    fun acceptCompletion(candidate: CommandCompletion) {
+        val applied = AdbCommandCompletion.apply(input.text, candidate) ?: return
+        input = TextFieldValue(applied.text, selection = TextRange(applied.cursor))
+        suppressSuggestionsFor = null
     }
 
     Column(
         modifier = modifier.fillMaxSize().imePadding().padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        ModernPanel(
+        if (completions.isEmpty()) ModernPanel(
             Modifier.fillMaxWidth(),
             if (status.connected) DashboardTone.INFO else DashboardTone.WARN,
         ) {
@@ -207,10 +274,19 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                 ) {
                     OutlinedTextField(
                         value = input,
-                        onValueChange = {
-                            if (it.length <= AdbConsoleProtocol.MAX_COMMAND_CHARS) input = it
+                        onValueChange = { newValue ->
+                            if (newValue.text.length <= AdbConsoleProtocol.MAX_COMMAND_CHARS) {
+                                if (newValue.text != input.text) suppressSuggestionsFor = null
+                                input = newValue
+                            }
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.key == Key.Tab &&
+                                completions.isNotEmpty()) {
+                                acceptCompletion(completions.first())
+                                true
+                            } else false
+                        },
                         label = { Text("Input ADB command") },
                         placeholder = { Text("e.g. id; getprop ro.build.version.release") },
                         minLines = 1, maxLines = 3,
@@ -221,7 +297,7 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                         trailingIcon = {
                             IconButton(onClick = {
                                 if (console.running) AdbConsole.interrupt() else execute()
-                            }, enabled = console.running || input.isNotBlank()) {
+                            }, enabled = console.running || input.text.isNotBlank()) {
                                 Icon(
                                     if (console.running) Icons.Rounded.Stop
                                     else Icons.Rounded.PlayArrow,
@@ -238,9 +314,79 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                             contentDescription = "Paste from clipboard")
                     }
                 }
-                Text("Commands run through LocalAdb's verified shell only.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (completions.isNotEmpty()) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null,
+                            tint = DashboardTone.INFO.accent,
+                            modifier = Modifier.size(18.dp))
+                        Text("Autocomplete", style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f))
+                        Text("Tap or Tab · never runs automatically",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(
+                        Modifier.fillMaxWidth().heightIn(max = 184.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        completions.forEach { candidate ->
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    acceptCompletion(candidate)
+                                },
+                                shape = MaterialTheme.shapes.medium,
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(
+                                        horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                                ) {
+                                    Icon(
+                                        when (candidate.kind) {
+                                            CompletionKind.PACKAGE -> Icons.Rounded.Inventory2
+                                            CompletionKind.PERMISSION -> Icons.Rounded.Security
+                                            CompletionKind.HISTORY -> Icons.Rounded.History
+                                            CompletionKind.BOOKMARK -> Icons.Rounded.Bookmark
+                                            CompletionKind.COMMAND -> Icons.Rounded.Terminal
+                                        },
+                                        contentDescription = null,
+                                        tint = when (candidate.kind) {
+                                            CompletionKind.PACKAGE -> DashboardTone.GOOD.accent
+                                            CompletionKind.PERMISSION -> DashboardTone.WARN.accent
+                                            else -> DashboardTone.INFO.accent
+                                        },
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                    Text(candidate.value, modifier = Modifier.weight(1f),
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        fontFamily = FontFamily.Monospace,
+                                        style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        when (candidate.kind) {
+                                            CompletionKind.PACKAGE -> "Package"
+                                            CompletionKind.PERMISSION -> "Permission"
+                                            CompletionKind.HISTORY -> "History"
+                                            CompletionKind.BOOKMARK -> "Saved"
+                                            CompletionKind.COMMAND -> "Command"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text("Commands run through LocalAdb's verified shell only.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
 
@@ -377,9 +523,9 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
             title = { Text("Save command as bookmark?") },
             text = { Text("Bookmarks are stored privately without encryption. Do not save passwords or tokens.") },
             confirmButton = { Button(onClick = {
-                AdbConsole.toggleBookmark(context, input)
+                AdbConsole.toggleBookmark(context, input.text)
                 confirmBookmark = false
-            }, enabled = input.isNotBlank()) { Text("Save / Remove") } },
+            }, enabled = input.text.isNotBlank()) { Text("Save / Remove") } },
             dismissButton = { TextButton(onClick = { confirmBookmark = false }) { Text("Cancel") } },
         )
     }
@@ -398,7 +544,9 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                     else commands.forEach { command ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
-                                input = command
+                                input = TextFieldValue(
+                                    command, selection = TextRange(command.length))
+                                suppressSuggestionsFor = command
                                 picker = null
                             },
                             color = MaterialTheme.colorScheme.surfaceContainerHighest,
