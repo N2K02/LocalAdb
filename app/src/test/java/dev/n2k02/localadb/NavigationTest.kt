@@ -33,7 +33,7 @@ class NavigationTest {
     }
     @Test fun bottomNavigationHasFiveEntriesAndHomeHasNoDuplicateActions() {
         val source = java.io.File("src/main/java/dev/n2k02/localadb/LocalAdbScreen.kt").readText()
-        assertEquals(5, "NavigationBarItem(".toRegex().findAll(source).count())
+        assertEquals(5, source.split("NavigationBarItem(").size - 1)
         assertTrue(source.contains("onClick = { page = Navigation.selectTab(page, Page.APPS) }"))
         assertTrue(source.contains("onClick = { page = Navigation.selectTab(page, Page.ADB) }"))
         val home = source.substringAfter("private fun HomePage(").substringBefore("private fun StatusLabel(")
@@ -49,7 +49,7 @@ class NavigationTest {
     @Test fun headerKeepsAppIconCompactAndUsesOneTopBar() {
         val source = java.io.File("src/main/java/dev/n2k02/localadb/LocalAdbScreen.kt").readText()
         assertTrue(source.contains("Modifier.size(25.dp)"))
-        assertEquals(1, "TopAppBar(".toRegex().findAll(source).count())
+        assertEquals(1, source.split("TopAppBar(").size - 1)
     }
     @Test fun quitShutsDownCommandAndShizukuBeforeAdb() {
         val source = java.io.File("src/main/java/dev/n2k02/localadb/MainActivity.kt").readText()

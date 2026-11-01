@@ -29,7 +29,6 @@ private fun iconFor(page: Page): ImageVector = when (page) {
     Page.ADB -> Icons.Rounded.Terminal
     Page.SETTINGS -> Icons.Rounded.Settings
     Page.ADB_CONNECTION -> Icons.Rounded.Wifi
-    Page.APPS -> Icons.Rounded.Apps
     Page.UPDATES -> Icons.Rounded.SystemUpdate
 }
 
@@ -39,7 +38,6 @@ private fun titleFor(page: Page): String = when (page) {
     Page.ADB -> "Adb"
     Page.SETTINGS -> "Settings"
     Page.ADB_CONNECTION -> "ADB connection"
-    Page.APPS -> "Apps"
     Page.UPDATES -> "Updates"
 }
 

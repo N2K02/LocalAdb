@@ -53,7 +53,7 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
     var refresh by remember { mutableIntStateOf(0) }
     var search by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
-    var shizukuOnly by remember { mutableStateOf(false) }
+    var shizukuOnly by remember { mutableStateOf(true) }
     var grantFilter by remember { mutableStateOf<Boolean?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<PendingAndroidGrant?>(null) }
@@ -100,65 +100,59 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
-                        Text("App access", style = MaterialTheme.typography.titleMedium)
-                        Text(numberOfClients.toString() + " Shizuku clients · " +
-                            numberOfAndroidGrants + " Android grants",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    TextButton(onClick = { refresh++ }, enabled = !loading && changing == null) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = null)
-                        Text("Refresh")
+                Row(Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(numberOfClients.toString() + " Shizuku clients · " +
+                        numberOfAndroidGrants + " Android grants",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    IconButton(onClick = { refresh++ },
+                        enabled = !loading && changing == null) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = "Refresh apps")
                     }
                 }
 
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Rounded.Security, contentDescription = null)
-                            Text("LocalAdb Shizuku manager",
-                                style = MaterialTheme.typography.titleMedium)
+                    Column(Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.Security, contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary)
+                                Text("Shizuku manager", style = MaterialTheme.typography.titleMedium)
+                            }
+                            Surface(
+                                color = if (native.serviceReady)
+                                    MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                shape = MaterialTheme.shapes.large
+                            ) {
+                                Text(
+                                    if (native.serviceReady) "Ready"
+                                    else if (native.starting) "Starting" else "Offline",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                )
+                            }
                         }
-                        Text(native.message, style = MaterialTheme.typography.bodyMedium)
-                        Text(if (native.serviceReady)
-                            "Third-party Shizuku clients can request access here. " +
-                            "Grants are verified against the bundled server."
-                        else "Connect Android ADB shell UID 2000 and start the embedded " +
-                            "Shizuku server. No separate Shizuku application is required.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(native.message, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        if (!native.serviceReady) {
                             Button(onClick = {
                                 NativeShizukuManager.start(context, explicit = true)
-                            }, enabled = adb.connected && !native.starting && !native.serviceReady) {
-                                Text(if (native.starting) "Starting" else "Start server")
+                            }, enabled = adb.connected && !native.starting) {
+                                Text(if (native.starting) "Starting…" else "Start server")
                             }
-                            OutlinedButton(onClick = {
-                                NativeShizukuManager.refresh(context)
-                                refresh++
-                            }) { Text("Check status") }
+                        } else {
+                            Text("Shizuku access can be approved or revoked below.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                    }
-                }
-
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Rounded.VerifiedUser, contentDescription = null)
-                            Text("Android developer permissions",
-                                style = MaterialTheme.typography.titleMedium)
-                        }
-                        Text(if (adb.connected)
-                            "ADB shell UID 2000 verified. Select an individual permission below."
-                        else "Connect ADB first to change Android permissions.",
-                            style = MaterialTheme.typography.bodyMedium)
-                        Text("Only declared, ADB-grantable Android permissions are editable. " +
-                            "Every change requires confirmation and Android readback.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -180,16 +174,21 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                 }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = shizukuOnly, onClick = { shizukuOnly = !shizukuOnly },
-                        label = { Text("Shizuku clients") })
-                    FilterChip(selected = grantFilter == null,
-                        onClick = { grantFilter = null }, label = { Text("All Android") })
-                    FilterChip(selected = grantFilter == true,
-                        onClick = { grantFilter = true }, label = { Text("Granted") })
-                    FilterChip(selected = grantFilter == false,
-                        onClick = { grantFilter = false }, label = { Text("Not granted") })
+                    FilterChip(selected = shizukuOnly && grantFilter == null,
+                        onClick = { shizukuOnly = true; grantFilter = null },
+                        label = { Text("Shizuku") })
+                    FilterChip(selected = !shizukuOnly && grantFilter == null,
+                        onClick = { shizukuOnly = false; grantFilter = null },
+                        label = { Text("All apps") })
+                    FilterChip(selected = grantFilter == true && !shizukuOnly,
+                        onClick = { shizukuOnly = false; grantFilter = true },
+                        label = { Text("Android granted") })
+                    FilterChip(selected = grantFilter == false && !shizukuOnly,
+                        onClick = { shizukuOnly = false; grantFilter = false },
+                        label = { Text("Android revoked") })
                 }
-                Text(visible.size.toString() + " matching apps · current Android user",
+                Text(visible.size.toString() + " matching apps · current Android user" +
+                    (if (!adb.connected) " · connect ADB to edit permissions" else ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (feedback != null) {
