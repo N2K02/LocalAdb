@@ -3,8 +3,14 @@ package dev.n2k02.localadb
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -132,6 +138,18 @@ internal fun AdbConsolePage(
     var search by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var tabHistory by rememberSaveable { mutableStateOf(listOf(0)) }
+
+    fun selectContentTab(tab: Int) {
+        if (tab !in 0..2) return
+        tabHistory = TabVisitHistory.select(tabHistory, tab)
+        selectedTab = tab
+    }
+    BackHandler(enabled = tabHistory.size > 1) {
+        val (previousHistory, previousTab) = TabVisitHistory.pop(tabHistory)
+        tabHistory = previousHistory
+        selectedTab = previousTab ?: 0
+    }
     var confirmClear by remember { mutableStateOf(false) }
     var confirmBookmark by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
@@ -140,7 +158,7 @@ internal fun AdbConsolePage(
     // 35-entry history evicts its oldest entry and the count stays constant.
     LaunchedEffect(console.entries.lastOrNull()) {
         expandedEntry = console.entries.lastOrNull()
-        if (console.entries.isNotEmpty()) selectedTab = 0
+        if (console.entries.isNotEmpty()) selectContentTab(0)
     }
     val completions = remember(input.text, input.selection, completionIndex,
         console.history, console.bookmarks, console.running, searchOpen,
@@ -199,103 +217,143 @@ internal fun AdbConsolePage(
     }
 
     Column(
-        modifier = modifier.fillMaxSize().imePadding().padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.fillMaxSize().imePadding()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .swipeTabNavigation(
+                onSwipeLeft = { selectContentTab((selectedTab + 1).coerceAtMost(2)) },
+                onSwipeRight = { selectContentTab((selectedTab - 1).coerceAtLeast(0)) },
+                canSwipeLeft = selectedTab < 2,
+                canSwipeRight = selectedTab > 0,
+                consumeOnNavigation = true,
+            ),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        // Home owns the full connection card; the console needs only live status.
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        // Terminal-style input bar: all shell status belongs inside the command card.
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            border = BorderStroke(1.dp, DashboardTone.INFO.accent.copy(alpha = 0.48f)),
         ) {
-            ModernStatusChip(if (status.connected) "Ready" else "Offline",
-                if (status.connected) DashboardTone.GOOD else DashboardTone.ERROR,
-                icon = Icons.Rounded.CheckCircle)
-            ModernStatusChip(
-                if (status.connected) {
-                    if (status.tcpConnected) "TCP/5555" else "Wireless TLS"
-                } else "Disconnected",
-                if (status.connected) DashboardTone.GOOD else DashboardTone.WARN,
-                icon = Icons.Rounded.SettingsEthernet)
-            ModernStatusChip(if (status.connected) "UID 2000" else "No shell",
-                if (status.connected) DashboardTone.INFO else DashboardTone.WARN,
-                icon = null)
-            IconButton(onClick = onOpenConnection) {
-                Icon(Icons.Rounded.SettingsEthernet, contentDescription = "Connection")
-            }
-        }
-
-        if (searchOpen && selectedTab == 0) {
-            OutlinedTextField(
-                value = search, onValueChange = { search = it },
-                modifier = Modifier.fillMaxWidth(), singleLine = true,
-                label = { Text("Find in command output") },
-            )
-        }
-
-        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO) {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(
+                        Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(Icons.Rounded.Terminal, contentDescription = null,
+                            modifier = Modifier.size(18.dp), tint = DashboardTone.INFO.accent)
+                        Text("Run", style = MaterialTheme.typography.titleSmall)
+                        ModernStatusChip(if (status.connected) "Ready" else "Offline",
+                            if (status.connected) DashboardTone.GOOD else DashboardTone.ERROR,
+                            icon = Icons.Rounded.CheckCircle)
+                        ModernStatusChip(
+                            if (status.connected) {
+                                if (status.tcpConnected) "TCP/5555" else "Wireless TLS"
+                            } else "Disconnected",
+                            if (status.connected) DashboardTone.GOOD else DashboardTone.WARN,
+                            icon = null)
+                        ModernStatusChip(if (status.connected) "UID 2000" else "No shell",
+                            if (status.connected) DashboardTone.INFO else DashboardTone.WARN,
+                            icon = null)
+                    }
+                    IconButton(onClick = onOpenCommands, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Rounded.MenuBook, contentDescription = "Commands",
+                            modifier = Modifier.size(19.dp))
+                    }
+                    IconButton(onClick = onOpenConnection, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Rounded.SettingsEthernet, contentDescription = "Connection",
+                            modifier = Modifier.size(19.dp))
+                    }
+                }
                 Row(Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Rounded.Terminal, contentDescription = null,
-                        tint = DashboardTone.INFO.accent, modifier = Modifier.size(19.dp))
-                    Text("Run command", style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f))
-                    OutlinedButton(onClick = onOpenCommands) { Text("Commands") }
-                    IconButton(onClick = { confirmBookmark = true },
-                        enabled = input.text.isNotBlank()) {
-                        Icon(Icons.Rounded.BookmarkAdd, contentDescription = "Save current command")
+                    Surface(
+                        modifier = Modifier.weight(1f).height(46.dp),
+                        shape = RoundedCornerShape(11.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            BasicTextField(
+                                value = input,
+                                onValueChange = { newValue ->
+                                    if (newValue.text.length <=
+                                        AdbConsoleProtocol.MAX_COMMAND_CHARS) {
+                                        if (newValue.text != input.text) suppressSuggestionsFor = null
+                                        onInputChange(newValue)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f).onPreviewKeyEvent { event ->
+                                    if (event.type == KeyEventType.KeyDown &&
+                                        event.key == Key.Tab && completions.isNotEmpty()) {
+                                        acceptCompletion(completions.first())
+                                        true
+                                    } else false
+                                },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontFamily = FontFamily.Monospace),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                                keyboardActions = KeyboardActions(onSend = { execute() }),
+                                decorationBox = { inner ->
+                                    Box {
+                                        if (input.text.isEmpty()) Text("ADB shell command",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        inner()
+                                    }
+                                },
+                            )
+                            if (input.text.isNotEmpty()) {
+                                IconButton(onClick = {
+                                    onInputChange(TextFieldValue(""))
+                                    suppressSuggestionsFor = null
+                                }, modifier = Modifier.size(26.dp)) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "Clear command",
+                                        modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
                     }
-                }
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    OutlinedTextField(
-                        value = input,
-                        onValueChange = { newValue ->
-                            if (newValue.text.length <= AdbConsoleProtocol.MAX_COMMAND_CHARS) {
-                                if (newValue.text != input.text) suppressSuggestionsFor = null
-                                onInputChange(newValue)
-                            }
-                        },
-                        modifier = Modifier.weight(1f).onPreviewKeyEvent { event ->
-                            if (event.type == KeyEventType.KeyDown && event.key == Key.Tab &&
-                                completions.isNotEmpty()) {
-                                acceptCompletion(completions.first())
-                                true
-                            } else false
-                        },
-                        label = { Text("Input ADB command") },
-                        placeholder = { Text("e.g. id; getprop ro.build.version.release") },
-                        minLines = 1, maxLines = 3,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            fontFamily = FontFamily.Monospace),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = { execute() }),
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                if (console.running) AdbConsole.interrupt() else execute()
-                            }, enabled = console.running || input.text.isNotBlank()) {
-                                Icon(
-                                    if (console.running) Icons.Rounded.Stop
-                                    else Icons.Rounded.PlayArrow,
-                                    contentDescription = if (console.running) "Stop command"
-                                        else "Execute command",
-                                    tint = if (console.running) DashboardTone.ERROR.accent
-                                        else DashboardTone.GOOD.accent
-                                )
-                            }
-                        },
-                    )
-                    FilledTonalIconButton(onClick = { paste() }) {
+                    IconButton(onClick = {
+                        if (console.running) AdbConsole.interrupt() else execute()
+                    }, modifier = Modifier.size(40.dp),
+                        enabled = console.running || input.text.isNotBlank()) {
+                        Icon(if (console.running) Icons.Rounded.Stop else Icons.Rounded.PlayArrow,
+                            contentDescription = if (console.running) "Stop command"
+                                else "Execute command",
+                            tint = if (console.running) DashboardTone.ERROR.accent
+                                else DashboardTone.GOOD.accent)
+                    }
+                    IconButton(onClick = { paste() }, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Rounded.ContentPaste,
-                            contentDescription = "Paste from clipboard")
+                            contentDescription = "Paste from clipboard",
+                            modifier = Modifier.size(21.dp))
+                    }
+                    IconButton(onClick = { confirmBookmark = true },
+                        enabled = input.text.isNotBlank(), modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Rounded.BookmarkAdd,
+                            contentDescription = "Save current command",
+                            modifier = Modifier.size(21.dp))
                     }
                 }
-                if (completions.isNotEmpty()) {
+            }
+        }
+
+        // Completion suggestions are only rendered while editing a command.
+        if (completions.isNotEmpty()) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -310,7 +368,7 @@ internal fun AdbConsolePage(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Column(
-                        Modifier.fillMaxWidth().heightIn(max = 184.dp)
+                        Modifier.fillMaxWidth().heightIn(max = 132.dp)
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -364,8 +422,7 @@ internal fun AdbConsolePage(
                         }
                     }
                 }
-            }
-        }
+
 
         if (console.running) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -382,7 +439,7 @@ internal fun AdbConsolePage(
         // Keeping the output in the main viewport avoids wasted vertical space.
         TabRow(selectedTabIndex = selectedTab) {
             listOf("Output", "History", "Saved").forEachIndexed { index, name ->
-                Tab(selected = selectedTab == index, onClick = { selectedTab = index },
+                Tab(selected = selectedTab == index, onClick = { selectContentTab(index) },
                     text = { Text(name) })
             }
         }
@@ -410,6 +467,13 @@ internal fun AdbConsolePage(
             }
         }
 
+        if (searchOpen && selectedTab == 0) {
+            CompactSearchField(
+                value = search, onValueChange = { search = it },
+                placeholder = "Find in command output",
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         if (selectedTab == 0) {
         if (filtered.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -435,7 +499,7 @@ internal fun AdbConsolePage(
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 state = list,
-                verticalArrangement = Arrangement.spacedBy(9.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 items(newestFirst) { entry ->
                     val expanded = expandedEntry === entry ||
@@ -447,37 +511,36 @@ internal fun AdbConsolePage(
                         entry.exitCode == 0 -> DashboardTone.GOOD
                         else -> DashboardTone.WARN
                     }
-                    Surface(modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium,
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        border = BorderStroke(1.dp, tone.accent.copy(alpha = 0.40f))) {
-                        Column(Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically,
+                        border = BorderStroke(1.dp, tone.accent.copy(alpha = 0.50f)),
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Icon(Icons.Rounded.Terminal, contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                    tint = DashboardTone.INFO.accent)
-                                Column(
-                                    modifier = Modifier.weight(1f).clickable {
-                                        expandedEntry = if (expanded) null else entry
-                                    },
-                                    verticalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Text(entry.command,
-                                        fontFamily = FontFamily.Monospace, maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodyMedium)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically) {
-                                        ModernStatusChip(
+                                    tint = DashboardTone.INFO.accent,
+                                    modifier = Modifier.size(16.dp))
+                                Column(Modifier.weight(1f).clickable {
+                                    expandedEntry = if (expanded) null else entry
+                                }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(entry.command, fontFamily = FontFamily.Monospace,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Row(verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        Text(
                                             when {
                                                 entry.error != null -> "Failed"
                                                 entry.exitCode == 0 -> "Exit 0"
                                                 entry.exitCode != null -> "Exit " + entry.exitCode
                                                 else -> "Unknown exit"
-                                            }, tone, icon = null
-                                        )
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = tone.accent)
                                         Text(entry.durationMs.toString() + " ms" +
                                             (if (entry.truncated) " · truncated" else ""),
                                             style = MaterialTheme.typography.labelSmall,
@@ -486,53 +549,47 @@ internal fun AdbConsolePage(
                                 }
                                 IconButton(onClick = {
                                     clipboard.setPrimaryClip(ClipData.newPlainText(
-                                        "ADB command", entry.command))
-                                }) { Icon(Icons.Rounded.ContentCopy,
-                                    contentDescription = "Copy command") }
+                                        if (expanded) "ADB output" else "ADB command",
+                                        if (expanded) (entry.error ?: entry.output)
+                                            else entry.command))
+                                }, modifier = Modifier.size(34.dp)) {
+                                    Icon(Icons.Rounded.ContentCopy,
+                                        contentDescription = if (expanded) "Copy output"
+                                            else "Copy command", modifier = Modifier.size(18.dp))
+                                }
                                 IconButton(onClick = {
                                     expandedEntry = if (expanded) null else entry
-                                }) {
+                                }, modifier = Modifier.size(34.dp)) {
                                     Icon(if (expanded) Icons.Rounded.ExpandLess
                                         else Icons.Rounded.ExpandMore,
                                         contentDescription = if (expanded) "Collapse output"
-                                            else "Expand output")
+                                            else "Expand output",
+                                        modifier = Modifier.size(19.dp))
                                 }
                             }
                             if (expanded) {
-                                HorizontalDivider()
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 val fullOutput = entry.error ?: entry.output.ifEmpty { "(no output)" }
                                 var showFullOutput by remember(entry) { mutableStateOf(false) }
-                                // Compose need not measure 128k characters on every expanded row.
+                                // Preserve every package name without word-wrapping, like logcat.
                                 Text(
                                     if (showFullOutput || fullOutput.length <= 16_384) fullOutput
                                     else fullOutput.take(16_384) +
                                         "\n… preview shown; expand to see all output",
+                                    modifier = Modifier.fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
                                     fontFamily = FontFamily.Monospace,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 12.sp,
+                                    lineHeight = 15.sp,
+                                    softWrap = false,
                                     color = if (entry.error != null ||
                                         (entry.exitCode != null && entry.exitCode != 0))
                                         MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.onSurface,
                                 )
                                 if (fullOutput.length > 16_384) {
                                     TextButton(onClick = { showFullOutput = !showFullOutput }) {
                                         Text(if (showFullOutput) "Show preview" else "Show full output")
-                                    }
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        "Exit " + (entry.exitCode?.toString() ?: "unknown") +
-                                            " · " + entry.durationMs + " ms" +
-                                            (if (entry.truncated) " · truncated" else ""),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    IconButton(onClick = {
-                                        clipboard.setPrimaryClip(ClipData.newPlainText(
-                                            "ADB output", entry.error ?: entry.output))
-                                    }) {
-                                        Icon(Icons.Rounded.ContentCopy,
-                                            contentDescription = "Copy output")
                                     }
                                 }
                             }
@@ -558,7 +615,7 @@ internal fun AdbConsolePage(
                             onInputChange(TextFieldValue(command,
                                 selection = TextRange(command.length)))
                             suppressSuggestionsFor = command
-                            selectedTab = 0
+                            selectContentTab(0)
                         }, shape = MaterialTheme.shapes.small,
                             color = MaterialTheme.colorScheme.surfaceContainerLow) {
                             Text(command, modifier = Modifier.padding(10.dp),

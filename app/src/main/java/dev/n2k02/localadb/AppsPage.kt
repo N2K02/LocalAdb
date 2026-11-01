@@ -110,114 +110,142 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        ModernStatusChip(numberOfClients.toString() + " Shizuku clients",
-                            if (native.serviceReady) DashboardTone.GOOD else DashboardTone.WARN,
-                            icon = Icons.Rounded.Security)
-                        ModernStatusChip(numberOfAndroidGrants.toString() + " Android grants",
-                            DashboardTone.INFO, icon = Icons.Rounded.VerifiedUser)
+            // A single compact top card: search, live status and multi-select controls.
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.dp, DashboardTone.INFO.accent.copy(alpha = 0.47f)),
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(11.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    CompactSearchField(
+                        value = search, onValueChange = { search = it },
+                        placeholder = "Search apps or package name",
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        ModernStatusChip(if (adb.connected) "Ready" else "Offline",
+                            if (adb.connected) DashboardTone.GOOD else DashboardTone.ERROR,
+                            icon = Icons.Rounded.CheckCircle)
+                        ModernStatusChip(
+                            if (adb.connected) {
+                                if (adb.tcpConnected) "TCP/5555" else "Wireless TLS"
+                            } else "Disconnected",
+                            if (adb.connected) DashboardTone.GOOD else DashboardTone.WARN,
+                            icon = null)
+                        ModernStatusChip(if (adb.connected) "UID 2000" else "No shell",
+                            if (adb.connected) DashboardTone.INFO else DashboardTone.WARN,
+                            icon = null)
                     }
-                    IconButton(onClick = { refresh++ },
-                        enabled = !loading && changing == null && shizukuChanging == null) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = "Refresh apps",
-                            tint = DashboardTone.INFO.accent)
-                    }
-                }
-                OutlinedTextField(
-                    value = search, onValueChange = { search = it },
-                    placeholder = { Text("Search apps or package name") },
-                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                )
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box {
-                        OutlinedButton(onClick = { filtersOpen = true }) {
-                            Text("Filters · " + (selectedTypes.size + selectedAccess.size))
-                            Spacer(Modifier.width(5.dp))
-                            Icon(Icons.Rounded.ExpandMore, contentDescription = null,
-                                modifier = Modifier.size(18.dp))
-                        }
-                        DropdownMenu(expanded = filtersOpen,
-                            onDismissRequest = { filtersOpen = false }) {
-                            Column(Modifier.heightIn(max = 390.dp)
-                                .verticalScroll(rememberScrollState())) {
-                                Text("App type", modifier = Modifier.padding(
-                                    horizontal = 14.dp, vertical = 7.dp),
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box {
+                            OutlinedButton(
+                                onClick = { filtersOpen = true },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                modifier = Modifier.height(36.dp),
+                            ) {
+                                Text("Filters · " + (selectedTypes.size + selectedAccess.size),
                                     style = MaterialTheme.typography.labelMedium)
-                                listOf("User", "System", "Disabled", "Hidden").forEach { kind ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Checkbox(checked = kind in selectedTypes,
-                                                    onCheckedChange = null)
-                                                Text(kind)
-                                            }
-                                        },
-                                        onClick = {
-                                            selectedTypes = if (kind in selectedTypes)
-                                                selectedTypes - kind else selectedTypes + kind
-                                        },
-                                    )
-                                }
-                                HorizontalDivider()
-                                Text("Access (any selected)", modifier = Modifier.padding(
-                                    horizontal = 14.dp, vertical = 7.dp),
-                                    style = MaterialTheme.typography.labelMedium)
-                                listOf("Shizuku", "Android granted", "Android revoked")
-                                    .forEach { access ->
+                                Spacer(Modifier.width(3.dp))
+                                Icon(Icons.Rounded.ExpandMore, contentDescription = null,
+                                    modifier = Modifier.size(18.dp))
+                            }
+                            DropdownMenu(expanded = filtersOpen,
+                                onDismissRequest = { filtersOpen = false }) {
+                                Column(Modifier.heightIn(max = 390.dp)
+                                    .verticalScroll(rememberScrollState())) {
+                                    Text("App type", modifier = Modifier.padding(
+                                        horizontal = 14.dp, vertical = 7.dp),
+                                        style = MaterialTheme.typography.labelMedium)
+                                    listOf("User", "System", "Disabled", "Hidden").forEach { kind ->
                                         DropdownMenuItem(
                                             text = {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Checkbox(checked = access in selectedAccess,
+                                                    Checkbox(checked = kind in selectedTypes,
                                                         onCheckedChange = null)
-                                                    Text(access)
+                                                    Text(kind)
                                                 }
                                             },
                                             onClick = {
-                                                selectedAccess = if (access in selectedAccess)
-                                                    selectedAccess - access
-                                                else selectedAccess + access
+                                                selectedTypes = if (kind in selectedTypes)
+                                                    selectedTypes - kind else selectedTypes + kind
                                             },
                                         )
                                     }
-                                DropdownMenuItem(
-                                    text = { Text("All apps · clear filters") },
-                                    onClick = {
-                                        selectedTypes = emptySet()
-                                        selectedAccess = emptySet()
-                                        filtersOpen = false
-                                    },
-                                )
+                                    HorizontalDivider()
+                                    Text("Access (any selected)", modifier = Modifier.padding(
+                                        horizontal = 14.dp, vertical = 7.dp),
+                                        style = MaterialTheme.typography.labelMedium)
+                                    listOf("Shizuku", "Android granted", "Android revoked")
+                                        .forEach { access ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Checkbox(checked = access in selectedAccess,
+                                                            onCheckedChange = null)
+                                                        Text(access)
+                                                    }
+                                                },
+                                                onClick = {
+                                                    selectedAccess = if (access in selectedAccess)
+                                                        selectedAccess - access
+                                                    else selectedAccess + access
+                                                },
+                                            )
+                                        }
+                                    DropdownMenuItem(
+                                        text = { Text("All apps · clear filters") },
+                                        onClick = {
+                                            selectedTypes = emptySet()
+                                            selectedAccess = emptySet()
+                                            filtersOpen = false
+                                        },
+                                    )
+                                }
                             }
                         }
+                        Text(visible.size.toString() + " apps",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        IconButton(onClick = { descending = !descending },
+                            modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Rounded.SwapVert, contentDescription =
+                                if (descending) "Sort ascending" else "Sort descending")
+                        }
+                        IconButton(onClick = { refresh++ },
+                            modifier = Modifier.size(36.dp),
+                            enabled = !loading && changing == null && shizukuChanging == null) {
+                            Icon(Icons.Rounded.Refresh, contentDescription = "Refresh apps",
+                                tint = DashboardTone.INFO.accent)
+                        }
                     }
-                    Text(visible.size.toString() + " apps",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall,
+                    Text(numberOfClients.toString() + " Shizuku clients · " +
+                        numberOfAndroidGrants.toString() + " Android grants",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    IconButton(onClick = { descending = !descending }) {
-                        Icon(Icons.Rounded.SwapVert,
-                            contentDescription = if (descending) "Sort ascending" else "Sort descending")
+                    if (!adb.connected) Text("Connect ADB to edit Android permissions",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (feedback != null) Text(feedback.orEmpty(),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall)
+                    if (scanError != null) {
+                        Text(scanError.orEmpty(), color = MaterialTheme.colorScheme.error)
+                        OutlinedButton(onClick = { refresh++ }) { Text("Retry app discovery") }
                     }
-                }
-                if (!adb.connected) Text("Connect ADB to edit Android permissions",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (feedback != null) Text(feedback.orEmpty(),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodySmall)
-                if (scanError != null) {
-                    Text(scanError.orEmpty(), color = MaterialTheme.colorScheme.error)
-                    OutlinedButton(onClick = { refresh++ }) { Text("Retry app discovery") }
                 }
             }
         }
@@ -244,7 +272,7 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                         Row(
                             modifier = Modifier.fillMaxWidth()
                                 .clickable { appExpanded = !appExpanded }
-                                .padding(horizontal = 10.dp, vertical = 9.dp),
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
@@ -282,8 +310,8 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                         if (appExpanded) {
                             HorizontalDivider()
                             Column(Modifier.fillMaxWidth().padding(
-                                start = 12.dp, end = 12.dp, bottom = 9.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                start = 12.dp, end = 12.dp, bottom = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 if (app.shizukuClient) {
                                     Row(Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -298,7 +326,7 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                                             }, style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
-                                        Switch(
+                                        CompactPermissionSwitch(
                                             checked = grant == true,
                                             enabled = native.serviceReady && grant != null &&
                                                 shizukuChanging == null,
@@ -339,7 +367,7 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                                             }, style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
-                                        Switch(checked = granted,
+                                        CompactPermissionSwitch(checked = granted,
                                             enabled = adb.connected && grantable && changing == null,
                                             onCheckedChange = { wanted ->
                                                 pending = PendingAndroidGrant(app, permission, wanted)
@@ -455,7 +483,7 @@ private fun InstalledAppIcon(packageName: String) {
         }?.also { appIconCache.put(packageName, it) }
     }
     if (bitmap != null) Image(bitmap = bitmap!!, contentDescription = null,
-        modifier = Modifier.size(36.dp))
-    else Icon(Icons.Rounded.Apps, contentDescription = null, modifier = Modifier.size(36.dp))
+        modifier = Modifier.size(32.dp))
+    else Icon(Icons.Rounded.Apps, contentDescription = null, modifier = Modifier.size(32.dp))
 }
 

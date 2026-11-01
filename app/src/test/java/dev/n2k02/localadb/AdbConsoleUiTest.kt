@@ -46,7 +46,7 @@ class AdbConsoleUiTest {
         assertTrue(code.contains("Key.Tab"))
         assertTrue(code.contains("Tap or Tab"))
         assertTrue(code.contains("AdbCompletionIndexLoader.load(context)"))
-        assertTrue(code.contains("Text(\"Commands\")"))
+        assertTrue(code.contains("contentDescription = \"Commands\""))
         assertTrue(code.contains("suppressSuggestionsFor = input.text"))
     }
 
@@ -69,7 +69,7 @@ class AdbConsoleUiTest {
             "src/main/java/dev/n2k02/localadb/LocalAdbScreen.kt").readText()
         val catalog = java.io.File(
             "src/main/java/dev/n2k02/localadb/CommandLibraryPage.kt").readText()
-        assertTrue(code.contains("OutlinedButton(onClick = onOpenCommands)"))
+        assertTrue(code.contains("IconButton(onClick = onOpenCommands"))
         assertTrue(main.contains("Page.COMMAND_LIBRARY -> CommandLibraryPage("))
         assertTrue(main.contains("adbDraft = TextFieldValue(selected"))
         assertTrue(catalog.contains("onUse(entry.command)"))
@@ -83,11 +83,41 @@ class AdbConsoleUiTest {
         assertTrue(code.contains("TabRow(selectedTabIndex = selectedTab)"))
         assertTrue(code.contains("listOf(\"Output\", \"History\", \"Saved\")"))
         assertTrue(code.contains("Surface(modifier = Modifier.fillMaxWidth()"))
-        assertTrue(code.contains("selectedTab = 0"))
+        assertTrue(code.contains("selectContentTab(0)"))
         assertFalse(code.contains("title = \"Command console\""))
         assertTrue(code.contains("Modifier.weight(1f).fillMaxWidth()"))
         assertTrue(code.contains("showFullOutput"))
         assertTrue(code.contains("Show full output"))
+    }
+
+    @Test fun compactTerminalMatchesApprovedLogcatMock() {
+        val code = source()
+        assertTrue(code.contains("Terminal-style input bar"))
+        assertTrue(code.contains("Text(\"Run\", style = MaterialTheme.typography.titleSmall)"))
+        assertFalse(code.contains("Text(\"Run command\""))
+        assertTrue(code.contains("BasicTextField("))
+        assertTrue(code.contains("shape = RoundedCornerShape(11.dp)"))
+        assertTrue(code.contains("modifier = Modifier.weight(1f).height(46.dp)"))
+        assertTrue(code.contains("fontSize = 12.sp"))
+        assertTrue(code.contains("lineHeight = 15.sp"))
+        assertTrue(code.contains("softWrap = false"))
+        assertTrue(code.contains("horizontalScroll(rememberScrollState())"))
+        assertTrue(code.contains("CompactSearchField("))
+        assertTrue(code.contains("IconButton(onClick = onOpenCommands"))
+        assertTrue(code.contains("contentDescription = \"Connection\""))
+        assertTrue(code.contains("if (console.running) AdbConsole.interrupt() else execute()"))
+    }
+
+    @Test fun adbSubtabsSwipeAndBackInVisitOrder() {
+        val code = source()
+        assertTrue(code.contains("TabVisitHistory.select(tabHistory, tab)"))
+        assertTrue(code.contains("BackHandler(enabled = tabHistory.size > 1)"))
+        assertTrue(code.contains("TabVisitHistory.pop(tabHistory)"))
+        assertTrue(code.contains("onClick = { selectContentTab(index) }"))
+        assertTrue(code.contains("onSwipeLeft = { selectContentTab((selectedTab + 1).coerceAtMost(2)) }"))
+        assertTrue(code.contains("onSwipeRight = { selectContentTab((selectedTab - 1).coerceAtLeast(0)) }"))
+        assertTrue(code.contains("consumeOnNavigation = true"))
+        assertTrue(code.contains("selectContentTab(0)"))
     }
 
     @Test fun commandHistoryBookmarksAndAbortAreRetained() {
