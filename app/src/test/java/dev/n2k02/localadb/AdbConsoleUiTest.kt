@@ -22,6 +22,17 @@ class AdbConsoleUiTest {
         assertTrue(code.contains("list.animateScrollToItem(filtered.lastIndex)"))
         assertFalse(code.contains("list.animateScrollToItem(console.entries.size - 1)"))
     }
+    @Test fun consolePanelsAndResultBadgesUseLiveData() {
+        val code = source()
+        assertTrue(code.contains("ModernSectionHeader("))
+        assertTrue(code.contains("ModernPanel("))
+        assertTrue(code.contains("ModernStatusChip("))
+        assertTrue(code.contains("console.entries.size.toString()"))
+        assertTrue(code.contains("entry.exitCode == 0"))
+        assertTrue(code.contains("DashboardTone.ERROR"))
+        assertTrue(code.contains("DashboardTone.GOOD"))
+    }
+
     @Test fun commandHistoryBookmarksAndAbortAreRetained() {
         val code = source()
         assertTrue(code.contains("AdbConsole.execute(input)"))

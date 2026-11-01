@@ -6,15 +6,23 @@ header and VRec-style Home status cards.
 
 ## Navigation
 
-- **Home**: three compact read-only cards for ADB/pairing/transport/UID 2000,
-  native Shizuku health, and automated Android permission verification.
-  Actions and navigation shortcuts are deliberately not duplicated here.
-- **Apps**: Shizuku clients shown first, with searchable User/System/Disabled/
-  Hidden and Android grant filters, verified local Shizuku permissions,
-  individually confirmed Android developer permissions, and expandable
-  per-app Android permission details.
-- **Adb**: aShell You-inspired internal command console with output/exit codes,
-  searchable bounded history, bookmarks, copy/paste and interrupt.
+- **Home**: three richly accented, live-status cards for ADB, the embedded
+  Shizuku manager, and LocalAdb's verified Android permissions. Only Home has
+  the Shizuku **Stop / Restart** actions, automatic recovery details, and
+  selectable startup diagnostics. The permissions card names the **actual
+  Android read-back grants** (Nearby Wi-Fi, Local network, Secure settings
+  when eligible); no placeholder/mock permissions are shown. Counts of
+  Shizuku clients and eligible Android grants are populated from a live scan.
+- **Apps**: matching gradient-accented client cards, verified color-coded
+  Shizuku authorization badges, compact app statistics, search and
+  User/System/Disabled/Hidden and Android grant filters. Shizuku API access
+  and Android development permissions retain separate confirmation and
+  readback, with expandable per-app Android permission details. No redundant
+  Shizuku server status/control card is rendered here.
+- **Adb**: aShell You-inspired command console with a colored connection
+  status card, a dedicated command-entry card, and green/red result cards
+  showing actual exit codes; searchable bounded history, bookmarks,
+  copy/paste and interrupt are preserved.
 - **Settings > ADB connection**: pairing, watchdog, boot/reboot restore,
   TCP/5555. This remains a submenu; the console is the main Adb tab.
 - **Settings > Updates**: shared updater. No duplicate Apps or Adb commands
@@ -61,14 +69,14 @@ the required arm64 library as
 before launching the native starter, and reports an error immediately if
 the copy fails or if the server process exits during starter execution.
 
-In **Apps → Shizuku manager**, **Stop server** attempts to shut down only this
+In **Home → Shizuku manager**, **Stop** attempts to shut down only this
 LocalAdb-owned server; it persists a manual-stop choice so the ADB watchdog
-does not immediately restart it. **Restart server** clears that choice and
+does not immediately restart it. **Restart** clears that choice and
 performs a controlled stop/start. No external Shizuku manager is needed.
 The verified ADB watchdog checks Shizuku health too, with a minimum 90-second
 retry interval to avoid reconnect loops.
 
-When server startup fails, the Apps page exposes **Show server diagnostics**
+When server startup fails, Home exposes **Show server diagnostics**
 with bounded excerpts from the native starter output, staged APK metadata and
 Shizuku server phases. During the Binder wait, progress is updated every
 five seconds and the operation ends with a visible failure after 60 seconds.

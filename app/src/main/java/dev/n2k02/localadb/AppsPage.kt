@@ -14,6 +14,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -22,8 +23,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -63,7 +62,6 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
     var shizukuGrants by remember { mutableStateOf<Map<Int, Boolean?>>(emptyMap()) }
     var pendingShizuku by remember { mutableStateOf<PendingShizukuGrant?>(null) }
     var shizukuChanging by remember { mutableStateOf<Int?>(null) }
-    var showServerDiagnostics by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -103,86 +101,30 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text(numberOfClients.toString() + " Shizuku clients · " +
-                        numberOfAndroidGrants + " Android grants",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    IconButton(onClick = { refresh++ },
-                        enabled = !loading && changing == null) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = "Refresh apps")
-                    }
-                }
-
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Security, contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary)
-                                Text("Shizuku manager", style = MaterialTheme.typography.titleMedium)
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text("App permissions", style = MaterialTheme.typography.titleMedium)
+                                Text("Verified Shizuku and Android developer access",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Surface(
-                                color = if (native.serviceReady)
-                                    MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceContainerHighest,
-                                shape = MaterialTheme.shapes.large
-                            ) {
-                                Text(
-                                    if (native.serviceReady) "Ready"
-                                    else if (native.starting) "Starting" else "Offline",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                                )
+                            IconButton(onClick = { refresh++ },
+                                enabled = !loading && changing == null && shizukuChanging == null) {
+                                Icon(Icons.Rounded.Refresh, contentDescription = "Refresh apps",
+                                    tint = DashboardTone.INFO.accent)
                             }
                         }
-                        Text(native.message, style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        Row(Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            OutlinedButton(onClick = {
-                                NativeShizukuManager.stop(context)
-                            }, enabled = !native.stopping &&
-                                (adb.connected || native.serviceReady || native.starting)) {
-                                Text(if (native.stopping) "Stopping…" else "Stop server")
-                            }
-                            Button(onClick = {
-                                NativeShizukuManager.restart(context)
-                            }, enabled = adb.connected &&
-                                !native.starting && !native.stopping) {
-                                Text("Restart server")
-                            }
-                        }
-                        Text(
-                            if (native.manuallyStopped)
-                                "Automatic startup paused by Stop. Restart resumes it."
-                            else "Automatically starts when ADB verifies shell UID 2000.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (native.diagnostics.isNotBlank()) {
-                            TextButton(onClick = {
-                                showServerDiagnostics = !showServerDiagnostics
-                            }) {
-                                Text(if (showServerDiagnostics) "Hide server diagnostics"
-                                    else "Show server diagnostics")
-                            }
-                            if (showServerDiagnostics) {
-                                SelectionContainer {
-                                    Text(native.diagnostics,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = MaterialTheme.colorScheme.error)
-                                }
-                            }
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            ModernStatusChip(numberOfClients.toString() + " Shizuku clients",
+                                if (native.serviceReady) DashboardTone.GOOD else DashboardTone.WARN,
+                                icon = Icons.Rounded.Security)
+                            ModernStatusChip(numberOfAndroidGrants.toString() + " Android grants",
+                                DashboardTone.INFO, icon = Icons.Rounded.VerifiedUser)
                         }
                     }
                 }
@@ -244,36 +186,60 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                 var androidExpanded by remember(app.packageName, grantFilter) {
                     mutableStateOf(grantFilter != null)
                 }
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ModernPanel(
+                    Modifier.fillMaxWidth(),
+                    tone = when {
+                        app.shizukuClient && shizukuGrants[app.uid] == true -> DashboardTone.GOOD
+                        app.shizukuClient && shizukuGrants[app.uid] == false -> DashboardTone.WARN
+                        else -> DashboardTone.INFO
+                    }
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             InstalledAppIcon(app.packageName)
-                            Column(Modifier.weight(1f)) {
+                            Column(Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(app.label, style = MaterialTheme.typography.titleMedium,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(app.packageName, style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                     AppCategoryLabel(if (app.system) "System" else "User")
                                     if (!app.enabled) AppCategoryLabel("Disabled")
-                                    if (!app.hasLauncher) AppCategoryLabel("No launcher")
                                 }
+                            }
+                            if (app.shizukuClient) {
+                                ModernStatusChip(
+                                    when (shizukuGrants[app.uid]) {
+                                        true -> "Granted"
+                                        false -> "Not granted"
+                                        null -> "Unverified"
+                                    },
+                                    when (shizukuGrants[app.uid]) {
+                                        true -> DashboardTone.GOOD
+                                        false -> DashboardTone.WARN
+                                        null -> DashboardTone.NEUTRAL
+                                    },
+                                    icon = null,
+                                )
                             }
                         }
                         if (app.shizukuClient) {
                             HorizontalDivider()
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 Icon(Icons.Rounded.Security, contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary)
+                                    tint = DashboardTone.INFO.accent)
                                 Column(Modifier.weight(1f)) {
                                     Text(if (app.shizukuV3) "Shizuku API V3 client"
                                          else "Potential legacy Shizuku client",
                                         style = MaterialTheme.typography.bodyMedium)
                                     Text(
                                         when (shizukuGrants[app.uid]) {
-                                            true -> "Shizuku API: Granted by local server"
-                                            false -> "Shizuku API: Not granted"
-                                            null -> "Shizuku API: Unverified (server unavailable)"
+                                            true -> "Authorized by the local Shizuku server"
+                                            false -> "Permission not granted"
+                                            null -> "Unable to verify permission"
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -303,9 +269,11 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                                     Text("Android permissions · " +
                                         app.declaredAdbPermissions.size,
                                         style = MaterialTheme.typography.titleSmall)
-                                    Text(app.grantedAdbPermissions.size.toString() + " granted",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    ModernStatusChip(
+                                        app.grantedAdbPermissions.size.toString() + " granted",
+                                        if (app.grantedAdbPermissions.isNotEmpty()) DashboardTone.GOOD
+                                        else DashboardTone.NEUTRAL, icon = null
+                                    )
                                 }
                                 TextButton(onClick = { androidExpanded = !androidExpanded }) {
                                     Text(if (androidExpanded) "Hide" else "Show")
@@ -320,7 +288,7 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Column(Modifier.weight(1f),
                                     verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(permission.substringAfterLast('.').replace('_', ' '),
+                                    Text(DashboardPresentation.permissionName(permission),
                                         style = MaterialTheme.typography.bodyMedium)
                                     Text(
                                         when {
@@ -330,7 +298,8 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                                             else -> "Not granted by Android"
                                         },
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        color = if (granted) DashboardTone.GOOD.accent
+                                            else MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Switch(
                                     checked = granted,
@@ -451,14 +420,9 @@ private fun InstalledAppIcon(packageName: String) {
 
 @Composable
 private fun AppCategoryLabel(text: String) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceContainerHighest
-    ) {
-        Text(
-            text,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall
-        )
-    }
+    ModernStatusChip(
+        text,
+        if (text == "Disabled") DashboardTone.WARN else DashboardTone.NEUTRAL,
+        icon = null
+    )
 }

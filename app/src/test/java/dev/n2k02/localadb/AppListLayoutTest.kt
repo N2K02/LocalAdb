@@ -22,6 +22,17 @@ class AppListLayoutTest {
         assertTrue(code.contains("if (androidExpanded) for (permission"))
         assertTrue(code.contains("if (androidExpanded) \"Hide\" else \"Show\""))
     }
+    @Test fun appsHaveModernStatusCardsButNoServerControls() {
+        val code = source.readText()
+        assertTrue(code.contains("ModernPanel("))
+        assertTrue(code.contains("ModernStatusChip("))
+        assertTrue(code.contains("DashboardTone.GOOD"))
+        assertTrue(code.contains("DashboardTone.WARN"))
+        assertFalse(code.contains("Text(\"Shizuku manager\""))
+        assertFalse(code.contains("NativeShizukuManager.stop(context)"))
+        assertFalse(code.contains("NativeShizukuManager.restart(context)"))
+    }
+
     @Test fun shizukuAndAndroidPermissionTogglesStaySeparate() {
         val code = source.readText()
         assertTrue(code.contains("NativeShizukuManager.changeGrant("))

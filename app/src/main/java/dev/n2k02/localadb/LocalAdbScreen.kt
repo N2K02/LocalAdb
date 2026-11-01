@@ -18,6 +18,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import dev.n2k02.updater.N2K02UpdateBadgedIcon
 import dev.n2k02.updater.N2K02UpdateBadge
 import dev.n2k02.updater.N2K02UpdateScreen
@@ -128,124 +135,202 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
 
 @Composable
 private fun HomePage(modifier: Modifier) {
+    val context = LocalContext.current
     val connection by AdbEngine.status.collectAsState()
     val shizuku by NativeShizukuManager.state.collectAsState()
     val permissions by AdbPermissionBootstrap.state.collectAsState()
+    var showDiagnostics by rememberSaveable { mutableStateOf(false) }
+    var appCounts by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
-    // Home is read-only. The Apps tab, Adb tab and Settings own their actions.
+    // Count real eligible installed apps, not invented screenshot values.
+    // Returning to Home re-enters composition and refreshes the live counts.
+    LaunchedEffect(shizuku.serviceReady) {
+        appCounts = null
+        try {
+            val available = withContext(Dispatchers.IO) {
+                AppAccessRepository.list(context.applicationContext)
+            }
+            appCounts = available.count { it.shizukuClient } to
+                available.sumOf { it.grantedAdbPermissions.size }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Counts stay unavailable; never claim zero clients after a scan error.
+        }
+    }
+
     Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Wifi, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary)
-                        Text("ADB connection", style = MaterialTheme.typography.titleMedium)
-                    }
-                    StatusLabel(if (connection.connected) "Ready" else "Offline",
-                        connection.connected)
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    HomeStatus("Shell", if (connection.connected) "2000" else "—",
-                        Modifier.weight(1f))
-                    HomeStatus("Pairing", when {
+        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO) {
+            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                ModernSectionHeader(
+                    title = "ADB connection", icon = Icons.Rounded.Wifi,
+                    tone = DashboardTone.INFO,
+                    subtitle = if (connection.connected) "Authorized shell · UID 2000"
+                    else "Waiting for an authorized Android shell",
+                    status = if (connection.connected) "Ready" else "Offline",
+                    statusTone = if (connection.connected) DashboardTone.GOOD
+                    else DashboardTone.ERROR,
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    ModernMetric("Shell", if (connection.connected) "2000" else "—",
+                        Icons.Rounded.Terminal, Modifier.weight(1f),
+                        if (connection.connected) DashboardTone.GOOD else DashboardTone.WARN)
+                    ModernMetric("Pairing", when {
                         connection.connected -> "Paired"
                         connection.pairingPort != null -> "Found"
                         else -> "Waiting"
-                    }, Modifier.weight(1f))
-                    HomeStatus("Transport", when {
+                    }, Icons.Rounded.Link, Modifier.weight(1f),
+                        if (connection.connected) DashboardTone.GOOD else DashboardTone.WARN)
+                    ModernMetric("Transport", when {
                         connection.tcpConnected -> "TCP"
                         connection.connected -> "TLS"
                         else -> "—"
-                    }, Modifier.weight(1f))
-                    HomeStatus("Discovery", if (connection.scanning) "Scan" else "Idle",
-                        Modifier.weight(1f))
+                    }, Icons.Rounded.SettingsEthernet, Modifier.weight(1f))
+                    ModernMetric("Discovery", if (connection.scanning) "Scan" else "Idle",
+                        Icons.Rounded.Radar, Modifier.weight(1f), DashboardTone.NEUTRAL)
                 }
                 Text(connection.message, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         }
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Security, contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary)
-                        Text("Shizuku server", style = MaterialTheme.typography.titleMedium)
-                    }
-                    StatusLabel(when {
+
+        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ModernSectionHeader(
+                    title = "Shizuku manager", icon = Icons.Rounded.Security,
+                    tone = DashboardTone.INFO,
+                    subtitle = if (shizuku.serviceReady) "Embedded Shizuku server · UID 2000"
+                        else shizuku.message,
+                    status = when {
                         shizuku.serviceReady -> "Ready"
                         shizuku.starting -> "Starting"
+                        shizuku.stopping -> "Stopping"
+                        shizuku.manuallyStopped -> "Stopped"
                         else -> "Offline"
-                    }, shizuku.serviceReady)
+                    },
+                    statusTone = when {
+                        shizuku.serviceReady -> DashboardTone.GOOD
+                        shizuku.starting || shizuku.stopping -> DashboardTone.WARN
+                        else -> DashboardTone.ERROR
+                    },
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    ModernMetric("Binder", if (shizuku.serviceReady) "Active" else "Offline",
+                        Icons.Rounded.Dns, Modifier.weight(1f),
+                        if (shizuku.serviceReady) DashboardTone.GOOD else DashboardTone.WARN)
+                    ModernMetric("Shell", if (shizuku.serviceReady) "2000" else "—",
+                        Icons.Rounded.VerifiedUser, Modifier.weight(1f),
+                        if (shizuku.serviceReady) DashboardTone.GOOD else DashboardTone.NEUTRAL)
+                    ModernMetric("Clients", appCounts?.first?.toString() ?: "—",
+                        Icons.Rounded.Apps, Modifier.weight(1f))
+                    ModernMetric("Grants", appCounts?.second?.toString() ?: "—",
+                        Icons.Rounded.Key, Modifier.weight(1f))
                 }
-                Text(shizuku.message, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Row(Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.VerifiedUser, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary)
-                    Text("Android permissions", style = MaterialTheme.typography.titleMedium)
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { NativeShizukuManager.stop(context) },
+                        enabled = !shizuku.stopping &&
+                            (connection.connected || shizuku.serviceReady || shizuku.starting)
+                    ) {
+                        Icon(Icons.Rounded.Stop, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Stop")
+                    }
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        onClick = { NativeShizukuManager.restart(context) },
+                        enabled = connection.connected && !shizuku.starting && !shizuku.stopping
+                    ) {
+                        Icon(Icons.Rounded.RestartAlt, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Restart")
+                    }
                 }
                 Text(
-                    if (!permissions.finished) "Waiting for verified shell UID 2000"
-                    else permissions.granted.size.toString() + " granted · " +
-                        permissions.unavailable.size + " unavailable",
-                    style = MaterialTheme.typography.bodyMedium
+                    if (shizuku.manuallyStopped) "Automatic startup paused until Restart."
+                    else "Automatically starts when ADB verifies shell UID 2000.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (permissions.unavailable.isNotEmpty()) {
-                    Text(permissions.unavailable.joinToString(" · ") {
-                        it.substringAfterLast('.')
-                    }, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 3, overflow = TextOverflow.Ellipsis)
+                if (shizuku.diagnostics.isNotBlank()) {
+                    TextButton(onClick = { showDiagnostics = !showDiagnostics }) {
+                        Text(if (showDiagnostics) "Hide server diagnostics"
+                        else "Show server diagnostics")
+                    }
+                    if (showDiagnostics) {
+                        SelectionContainer {
+                            Text(shizuku.diagnostics,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun StatusLabel(label: String, isReady: Boolean) {
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = if (isReady) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainerHighest,
-        contentColor = if (isReady) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.onSurfaceVariant
-    ) {
-        Text(label, style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
-    }
-}
-
-@Composable
-private fun HomeStatus(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Column(Modifier.padding(vertical = 10.dp, horizontal = 2.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(label, maxLines = 1, style = MaterialTheme.typography.labelSmall,
-                textAlign = TextAlign.Center)
-            Text(value, maxLines = 1, style = MaterialTheme.typography.labelMedium,
-                textAlign = TextAlign.Center)
+        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.GOOD) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ModernSectionHeader(
+                    title = "Android permissions",
+                    subtitle = DashboardPresentation.permissionSummary(
+                        permissions.finished, permissions.granted, permissions.unavailable),
+                    icon = Icons.Rounded.VerifiedUser,
+                    tone = DashboardTone.GOOD,
+                    status = if (permissions.finished)
+                        permissions.granted.size.toString() + " granted" else "Checking",
+                    statusTone = if (permissions.finished && permissions.unavailable.isEmpty())
+                        DashboardTone.GOOD else DashboardTone.WARN
+                )
+                if (!permissions.finished) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                } else {
+                    val all = permissions.granted.sorted().map { it to true } +
+                        permissions.unavailable.sorted().map { it to false }
+                    if (all.isEmpty()) {
+                        Text("No automatic Android permissions are requested.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        // Horizontal scrolling preserves long permission names on narrow devices.
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            all.forEach { (permission, granted) ->
+                                ModernStatusChip(
+                                    DashboardPresentation.permissionName(permission),
+                                    if (granted) DashboardTone.GOOD else DashboardTone.ERROR,
+                                    icon = if (granted) Icons.Rounded.CheckCircle
+                                    else Icons.Rounded.ErrorOutline
+                                )
+                            }
+                        }
+                    }
+                    val coverage = DashboardPresentation.permissionCoverage(
+                        permissions.finished, permissions.granted.size,
+                        permissions.unavailable.size
+                    )
+                    if (coverage != null) {
+                        LinearProgressIndicator(
+                            progress = { coverage },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (coverage == 1f) DashboardTone.GOOD.accent
+                                else DashboardTone.WARN.accent
+                        )
+                    }
+                }
+            }
         }
     }
 }

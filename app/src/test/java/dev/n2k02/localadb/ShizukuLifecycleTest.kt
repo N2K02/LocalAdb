@@ -31,15 +31,22 @@ class ShizukuLifecycleTest {
         assertTrue(allowed(elapsedMs = 90_000))
     }
 
-    @Test fun uiHasStopAndRestartNoMisleadingStartButton() {
-        val ui = java.io.File("src/main/java/dev/n2k02/localadb/AppsPage.kt").readText()
-        assertTrue(ui.contains("NativeShizukuManager.stop(context)"))
-        assertTrue(ui.contains("NativeShizukuManager.restart(context)"))
-        assertTrue(ui.contains("Text(\"Stop server\")") ||
-            ui.contains("else \"Stop server\""))
-        assertTrue(ui.contains("Text(\"Restart server\")"))
-        assertFalse(ui.contains("\"Start server\""))
-        assertTrue(ui.contains("native.diagnostics.isNotBlank()"))
+    @Test fun uiHasStopAndRestartOnHomeOnlyAndNotInApps() {
+        val ui = java.io.File("src/main/java/dev/n2k02/localadb/LocalAdbScreen.kt")
+            .readText()
+        val apps = java.io.File("src/main/java/dev/n2k02/localadb/AppsPage.kt")
+            .readText()
+        val home = ui.substringAfter("private fun HomePage(")
+            .substringBefore("private fun SettingsPage(")
+        assertTrue(home.contains("NativeShizukuManager.stop(context)"))
+        assertTrue(home.contains("NativeShizukuManager.restart(context)"))
+        assertTrue(home.contains("Text(\"Stop\")"))
+        assertTrue(home.contains("Text(\"Restart\")"))
+        assertTrue(home.contains("shizuku.diagnostics.isNotBlank()"))
+        assertFalse(apps.contains("NativeShizukuManager.stop(context)"))
+        assertFalse(apps.contains("NativeShizukuManager.restart(context)"))
+        assertFalse(apps.contains("Text(\"Shizuku manager\""))
+        assertFalse(home.contains("\"Start server\""))
     }
 
     @Test fun launchUsesShizukuHiddenApiFlagsAndReadbackDiagnostics() {
