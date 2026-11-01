@@ -1,5 +1,6 @@
 package dev.n2k02.localadb
 
+import android.annotation.SuppressLint
 import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +16,8 @@ import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuApiConstants
 
 /** Protected Shizuku server permission prompt, not an app-callable grant API. */
+// dispatchPermissionConfirmationResult is intentionally manager-only.
+@SuppressLint("RestrictedApi")
 class ShizukuApprovalActivity : ComponentActivity() {
     private var answered = false
     private var requestUid = -1

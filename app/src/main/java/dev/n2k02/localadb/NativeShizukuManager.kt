@@ -1,5 +1,6 @@
 package dev.n2k02.localadb
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Process
@@ -20,6 +21,10 @@ import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 
 /** Runs the Apache-2.0 Shizuku-Next server inside LocalAdb, not in a separate app. */
+// The Shizuku manager-only API methods are restricted to the library group
+// for ordinary clients. Runtime verification restricts calls to LocalAdb
+// when it owns the MANAGER permission and the Binder is live.
+@SuppressLint("RestrictedApi")
 internal object NativeShizukuManager {
     const val MANAGER_PERMISSION = "moe.shizuku.manager.permission.MANAGER"
     const val SHIZUKU_API_PERMISSION = "moe.shizuku.manager.permission.API_V23"

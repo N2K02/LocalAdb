@@ -48,9 +48,10 @@
         <!-- Shell-only payload extraction; other app UIDs are rejected. -->
         <provider android:name=".ShizukuPayloadProvider"
             android:authorities="${applicationId}.embedded-shizuku"
-            android:exported="true" android:grantUriPermissions="false" />
+            android:exported="true" android:grantUriPermissions="false"
+            android:readPermission="android.permission.DUMP" />
         <receiver android:name=".ShizukuBinderRequestReceiver"
-            android:exported="true">
+            android:exported="true" tools:ignore="ExportedReceiver">
             <intent-filter>
                 <action android:name="rikka.shizuku.intent.action.REQUEST_BINDER" />
             </intent-filter>
