@@ -36,6 +36,35 @@ class AppListLayoutTest {
         assertTrue(code.contains("surfaceContainerLow"))
     }
 
+    @Test fun mockUsesCompactRoundedSearchAndBadgeCard() {
+        val code = source.readText()
+        val controls = java.io.File(
+            "src/main/java/dev/n2k02/localadb/CompactControls.kt").readText()
+        assertTrue(code.contains("CompactSearchField("))
+        assertTrue(code.contains("shape = RoundedCornerShape(20.dp)"))
+        assertTrue(code.contains("if (adb.connected) \"Ready\" else \"Offline\""))
+        assertTrue(code.contains("if (adb.tcpConnected) \"TCP/5555\" else \"Wireless TLS\""))
+        assertTrue(code.contains("numberOfClients.toString()"))
+        assertTrue(code.contains("numberOfAndroidGrants.toString()"))
+        assertTrue(controls.contains("RoundedCornerShape(23.dp)"))
+        assertTrue(controls.contains("modifier = modifier.height(46.dp)"))
+        assertTrue(controls.contains("BasicTextField("))
+        assertTrue(controls.contains("modifier = modifier"))
+    }
+
+    @Test fun permissionSwitchesAreActuallySmallerNotJustScaledVisually() {
+        val code = source.readText()
+        val controls = java.io.File(
+            "src/main/java/dev/n2k02/localadb/CompactControls.kt").readText()
+        assertEquals(2, "CompactPermissionSwitch\\(".toRegex().findAll(code).count())
+        assertFalse(code.contains("Switch(checked ="))
+        assertTrue(controls.contains(".size(width = 40.dp, height = 24.dp)"))
+        assertTrue(controls.contains("role = Role.Switch"))
+        assertTrue(controls.contains("onValueChange = onCheckedChange"))
+        assertTrue(code.contains("PendingShizukuGrant(app, wanted)"))
+        assertTrue(code.contains("PendingAndroidGrant(app, permission, wanted)"))
+    }
+
     @Test fun iconRenderingIsBoundedAndShizukuReadbacksOffMainThread() {
         val code = source.readText()
         assertTrue(code.contains("LruCache<String, ImageBitmap>(48)"))
