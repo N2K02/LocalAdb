@@ -104,7 +104,7 @@ class AppAccessPolicyTest {
             apps, "", setOf("System", "Hidden"), setOf("Android granted")))
         assertEquals(listOf(shizuku), AppAccessPolicy.filterSelection(
             apps, "", setOf("User", "Hidden"), setOf("Shizuku")))
-        assertEquals(listOf(system), AppAccessPolicy.filterSelection(
+        assertEquals(listOf(shizuku, system), AppAccessPolicy.filterSelection(
             apps, "", emptySet(), setOf("Android granted", "Android revoked")))
         assertEquals(apps.size, AppAccessPolicy.filterSelection(
             apps, "", emptySet(), emptySet()).size)

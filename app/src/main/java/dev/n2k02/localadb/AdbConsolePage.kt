@@ -500,8 +500,13 @@ internal fun AdbConsolePage(
                             }
                             if (expanded) {
                                 HorizontalDivider()
+                                val fullOutput = entry.error ?: entry.output.ifEmpty { "(no output)" }
+                                var showFullOutput by remember(entry) { mutableStateOf(false) }
+                                // Compose need not measure 128k characters on every expanded row.
                                 Text(
-                                    entry.error ?: entry.output.ifEmpty { "(no output)" },
+                                    if (showFullOutput || fullOutput.length <= 16_384) fullOutput
+                                    else fullOutput.take(16_384) +
+                                        "\n… preview shown; expand to see all output",
                                     fontFamily = FontFamily.Monospace,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (entry.error != null ||
@@ -509,6 +514,11 @@ internal fun AdbConsolePage(
                                         MaterialTheme.colorScheme.error
                                     else MaterialTheme.colorScheme.onSurface
                                 )
+                                if (fullOutput.length > 16_384) {
+                                    TextButton(onClick = { showFullOutput = !showFullOutput }) {
+                                        Text(if (showFullOutput) "Show preview" else "Show full output")
+                                    }
+                                }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         "Exit " + (entry.exitCode?.toString() ?: "unknown") +

@@ -86,6 +86,8 @@ class AdbConsoleUiTest {
         assertTrue(code.contains("selectedTab = 0"))
         assertFalse(code.contains("title = \"Command console\""))
         assertTrue(code.contains("Modifier.weight(1f).fillMaxWidth()"))
+        assertTrue(code.contains("showFullOutput"))
+        assertTrue(code.contains("Show full output"))
     }
 
     @Test fun commandHistoryBookmarksAndAbortAreRetained() {

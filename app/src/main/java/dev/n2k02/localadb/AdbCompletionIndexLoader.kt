@@ -3,6 +3,7 @@ package dev.n2k02.localadb
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -12,7 +13,18 @@ import kotlinx.coroutines.withContext
  * QUERY_ALL_PACKAGES is already declared for LocalAdb's Apps page.
  */
 internal object AdbCompletionIndexLoader {
-    suspend fun load(context: Context): CompletionIndex = withContext(Dispatchers.IO) {
+    // Avoid rescanning every installed package on quick app switches/resumes.
+    // A bounded TTL refreshes installation and permission suggestions automatically.
+    private const val CACHE_FOR_MS = 60_000L
+    @Volatile private var snapshot: CompletionIndex? = null
+    @Volatile private var snapshotAtMs: Long = 0L
+
+    suspend fun load(context: Context): CompletionIndex {
+        val now = SystemClock.elapsedRealtime()
+        snapshot?.let { cached ->
+            if (now >= snapshotAtMs && now - snapshotAtMs < CACHE_FOR_MS) return cached
+        }
+        val loaded = withContext(Dispatchers.IO) {
         val pm = context.applicationContext.packageManager
         @Suppress("DEPRECATION")
         val installed = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
@@ -39,5 +51,9 @@ internal object AdbCompletionIndexLoader {
             permissions = permissions.sorted(),
             declaredPermissions = requested,
         )
+        }
+        snapshot = loaded
+        snapshotAtMs = SystemClock.elapsedRealtime()
+        return loaded
     }
 }
