@@ -93,6 +93,8 @@ class AdbConsoleUiTest {
     @Test fun compactTerminalMatchesApprovedLogcatMock() {
         val code = source()
         assertTrue(code.contains("Terminal-style input bar"))
+        assertTrue(code.contains("Text(\"Run\", style = MaterialTheme.typography.titleSmall)"))
+        assertFalse(code.contains("Text(\"Run command\""))
         assertTrue(code.contains("BasicTextField("))
         assertTrue(code.contains("shape = RoundedCornerShape(11.dp)"))
         assertTrue(code.contains("modifier = Modifier.weight(1f).height(46.dp)"))

@@ -249,7 +249,7 @@ internal fun AdbConsolePage(
                     ) {
                         Icon(Icons.Rounded.Terminal, contentDescription = null,
                             modifier = Modifier.size(18.dp), tint = DashboardTone.INFO.accent)
-                        Text("Run command", style = MaterialTheme.typography.titleSmall)
+                        Text("Run", style = MaterialTheme.typography.titleSmall)
                         ModernStatusChip(if (status.connected) "Ready" else "Offline",
                             if (status.connected) DashboardTone.GOOD else DashboardTone.ERROR,
                             icon = Icons.Rounded.CheckCircle)
