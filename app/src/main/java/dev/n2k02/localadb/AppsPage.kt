@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -61,6 +63,7 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
     var shizukuGrants by remember { mutableStateOf<Map<Int, Boolean?>>(emptyMap()) }
     var pendingShizuku by remember { mutableStateOf<PendingShizukuGrant?>(null) }
     var shizukuChanging by remember { mutableStateOf<Int?>(null) }
+    var showServerDiagnostics by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -142,16 +145,44 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                         Text(native.message, style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        if (!native.serviceReady) {
-                            Button(onClick = {
-                                NativeShizukuManager.start(context, explicit = true)
-                            }, enabled = adb.connected && !native.starting) {
-                                Text(if (native.starting) "Starting…" else "Start server")
+                        Row(Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            OutlinedButton(onClick = {
+                                NativeShizukuManager.stop(context)
+                            }, enabled = !native.stopping &&
+                                (adb.connected || native.serviceReady || native.starting)) {
+                                Text(if (native.stopping) "Stopping…" else "Stop server")
                             }
-                        } else {
-                            Text("Shizuku access can be approved or revoked below.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Button(onClick = {
+                                NativeShizukuManager.restart(context)
+                            }, enabled = adb.connected &&
+                                !native.starting && !native.stopping) {
+                                Text("Restart server")
+                            }
+                        }
+                        Text(
+                            if (native.manuallyStopped)
+                                "Automatic startup paused by Stop. Restart resumes it."
+                            else "Automatically starts when ADB verifies shell UID 2000.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (native.diagnostics.isNotBlank()) {
+                            TextButton(onClick = {
+                                showServerDiagnostics = !showServerDiagnostics
+                            }) {
+                                Text(if (showServerDiagnostics) "Hide server diagnostics"
+                                    else "Show server diagnostics")
+                            }
+                            if (showServerDiagnostics) {
+                                SelectionContainer {
+                                    Text(native.diagnostics,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.error)
+                                }
+                            }
                         }
                     }
                 }

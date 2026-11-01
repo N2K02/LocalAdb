@@ -134,12 +134,10 @@ internal object AdbEngine {
             message = if (tcp) "Authorized Android shell (UID 2000), localhost TCP/5555."
                       else "Authorized Android shell (UID 2000), Wireless debugging TLS.") }
         stopDiscovery()
-        // Mirror VRec's verified-shell setup: grant only eligible LocalAdb permissions
-        // and then launch the embedded Shizuku manager.
-        scope.launch {
-            AdbPermissionBootstrap.configure(context)
-            NativeShizukuManager.start(context)
-        }
+        // Native Shizuku autostart must not wait for permission bootstrap:
+        // a denied optional Android permission must not suppress server startup.
+        NativeShizukuManager.start(context)
+        scope.launch { AdbPermissionBootstrap.configure(context) }
         if (AdbSettings.get(context, AdbSettings.Option.RESTORE_AFTER_RESTART)) {
             // This is opt-in, and is attempted only after verifying our own shell.
             val safePackage = context.packageName.takeIf { it.matches(Regex("[A-Za-z0-9_.]+")) } ?: return
@@ -295,7 +293,12 @@ internal object AdbEngine {
             while (isActive && active && !AdbSettings.stopped(context)) {
                 delay(45_000L)
                 if (!AdbSettings.get(context, AdbSettings.Option.WATCHDOG)) continue
-                if (status.value.connected && AdbTransport.isConnected && verifyShell()) continue
+                if (status.value.connected && AdbTransport.isConnected && verifyShell()) {
+                    // A verified ADB connection can outlive the embedded Shizuku Binder.
+                    // Recovery is backoff-limited and respects a deliberate Stop.
+                    NativeShizukuManager.maybeRecover(context)
+                    continue
+                }
                 status.update { it.copy(phase = Phase.IDLE, shellUid = null, tcpConnected = false,
                     message = "ADB connection lost. Attempting authorized recovery…") }
                 retry(context)

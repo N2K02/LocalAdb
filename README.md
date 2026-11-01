@@ -30,14 +30,32 @@ LocalAdb logo/name; it never renders the 108dp launcher icon full-size.
 
 After LocalAdb verifies a live shell UID 2000 it:
 
-1. Attempts its own eligible Android permissions and confirms readback.
+1. Starts the native Shizuku manager **automatically and independently of
+   Android permission bootstrap**, even if an optional grant is unavailable.
 2. Verifies LocalAdb owns the globally named Shizuku manager permission.
 3. Streams the bundled Apache-2.0 Shizuku-Next payload to the verified shell
    using a UID-2000-restricted ContentProvider.
-4. Checks the exact SHA-256 on the device and launches it using app_process.
-5. Receives the server Binder through the official Shizuku provider.
+4. Checks the exact SHA-256 on the device, extracts Shizuku-Next's own
+   **native starter** from that verified APK for the device ABI, and launches
+   it to handle process detachment, hidden APIs and startup diagnostics.
+5. Waits for a **verified live Binder under UID 2000**; a successful shell
+   command by itself never counts as Shizuku readiness.
 6. Uses server permission flags for Shizuku grant/revoke and explicit approval
    requests from compatible apps. Never claims a grant without readback.
+
+In **Apps → Shizuku manager**, **Stop server** attempts to shut down only this
+LocalAdb-owned server; it persists a manual-stop choice so the ADB watchdog
+does not immediately restart it. **Restart server** clears that choice and
+performs a controlled stop/start. No external Shizuku manager is needed.
+The verified ADB watchdog checks Shizuku health too, with a minimum 90-second
+retry interval to avoid reconnect loops.
+
+When server startup fails, the Apps page exposes **Show server diagnostics**
+with bounded excerpts from the native starter output and Shizuku server phases. The same failure is
+also reported under the Android logcat tag `LocalAdbShizuku`, which can be
+inspected with the connected Android logger. A missing Binder can still reflect
+Android/OEM restrictions or incompatibility; these changes improve startup
+and diagnostics, but require on-device verification.
 
 The payload is bundled as an APK asset, NOT installed as a separate Android app.
 See THIRD_PARTY_NOTICES.md for the source, license and SHA-256.

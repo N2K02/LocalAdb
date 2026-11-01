@@ -5,6 +5,9 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
+import android.os.Build
+import android.util.Log
+import java.util.zip.ZipInputStream
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import java.io.FileNotFoundException
@@ -20,20 +23,50 @@ class ShizukuPayloadProvider : ContentProvider() {
         if (Binder.getCallingUid() != Process.SHELL_UID) {
             throw SecurityException("Only the Android shell UID 2000 can read the server payload")
         }
-        if (mode != "r" || uri.lastPathSegment != "embedded" ||
-            uri.pathSegments.size != 1) {
+        if (mode != "r" || uri.pathSegments.size != 1 ||
+            uri.lastPathSegment !in listOf("embedded", "starter")) {
             throw FileNotFoundException("No such bundled payload")
         }
         val application = context ?: throw FileNotFoundException("Application not initialized")
+        val starter = uri.lastPathSegment == "starter"
         val (read, write) = ParcelFileDescriptor.createPipe()
         Thread({
             try {
                 ParcelFileDescriptor.AutoCloseOutputStream(write).use { output ->
                     application.assets.open("embedded-shizuku-server.apk").use { input ->
-                        input.copyTo(output, bufferSize = 64 * 1024)
+                        if (starter) {
+                            // Shizuku-Next's *own* native starter has the detach,
+                            // SELinux and hidden-API setup needed for app_process.
+                            // No native executable is downloaded at runtime.
+                            ZipInputStream(input).use { zip ->
+                                // Prefer the primary device ABI. Selecting the first
+                                // ZIP match could accidentally choose 32-bit on arm64.
+                                val preferred = "lib/" +
+                                    Build.SUPPORTED_ABIS.firstOrNull().orEmpty() +
+                                    "/libshizuku.so"
+                                var entry = zip.nextEntry
+                                var found = false
+                                while (entry != null) {
+                                    if (entry.name == preferred) {
+                                        zip.copyTo(output, bufferSize = 64 * 1024)
+                                        found = true
+                                        break
+                                    }
+                                    entry = zip.nextEntry
+                                }
+                                if (!found) {
+                                    Log.e("LocalAdbShizuku",
+                                        "No supported native starter in bundled APK")
+                                }
+                            }
+                        } else {
+                            input.copyTo(output, bufferSize = 64 * 1024)
+                        }
                     }
                 }
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
+                Log.e("LocalAdbShizuku",
+                    "Could not stream embedded Shizuku payload", failure)
                 runCatching { write.close() }
             }
         }, "localadb-shizuku-asset").apply { isDaemon = true; start() }

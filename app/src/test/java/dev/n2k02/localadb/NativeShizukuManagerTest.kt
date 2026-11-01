@@ -33,7 +33,9 @@ class NativeShizukuManagerTest {
         assertTrue(launcher.contains("id -u"))
         assertTrue(launcher.contains("sha256sum"))
         assertTrue(launcher.contains("SERVER_SHA256"))
-        assertTrue(launcher.contains("app_process"))
+        assertTrue(launcher.contains("libshizuku.so"))
+        assertTrue(launcher.contains("--apk="))
+        assertTrue(launcher.contains("Shizuku.pingBinder()"))
         assertTrue(launcher.contains("Shizuku.pingBinder()"))
     }
 
