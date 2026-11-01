@@ -57,8 +57,9 @@ class AppListLayoutTest {
         val controls = java.io.File(
             "src/main/java/dev/n2k02/localadb/CompactControls.kt").readText()
         assertEquals(2, "CompactPermissionSwitch\\(".toRegex().findAll(code).count())
-        assertFalse(code.contains("Switch(checked ="))
+        assertFalse(code.lineSequence().any { it.trimStart().startsWith("Switch(") })
         assertTrue(controls.contains(".size(width = 40.dp, height = 24.dp)"))
+        assertTrue(controls.contains(".size(width = 48.dp, height = 44.dp)"))
         assertTrue(controls.contains("role = Role.Switch"))
         assertTrue(controls.contains("onValueChange = onCheckedChange"))
         assertTrue(code.contains("PendingShizukuGrant(app, wanted)"))

@@ -101,25 +101,33 @@ internal fun CompactPermissionSwitch(
     }
     val thumb = if (checked) MaterialTheme.colorScheme.onPrimary
         else MaterialTheme.colorScheme.onSurfaceVariant
+    // Visually compact 40x24dp track with a separate accessible 48x44dp hit target.
     Box(
         modifier = modifier
-            .size(width = 40.dp, height = 24.dp)
-            .clip(RoundedCornerShape(50))
-            .background(track)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
+            .size(width = 48.dp, height = 44.dp)
             .toggleable(
                 value = checked,
                 enabled = enabled,
                 role = Role.Switch,
                 onValueChange = onCheckedChange,
             ),
+        contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = Modifier.align(if (checked) Alignment.CenterEnd else Alignment.CenterStart)
-                .padding(horizontal = 3.dp)
-                .size(17.dp)
-                .clip(CircleShape)
-                .background(thumb)
-        )
+            modifier = Modifier
+                .size(width = 40.dp, height = 24.dp)
+                .clip(RoundedCornerShape(50))
+                .background(track)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(if (checked) Alignment.CenterEnd else Alignment.CenterStart)
+                    .padding(horizontal = 3.dp)
+                    .size(17.dp)
+                    .clip(CircleShape)
+                    .background(thumb)
+            )
+        }
     }
 }
