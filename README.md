@@ -30,6 +30,20 @@ header and VRec-style Home status cards.
   Package names and declared permissions are loaded read-only from Android's
   PackageManager; no additional ADB shell commands or Shizuku calls occur
   while typing. Enter/Send still explicitly runs the chosen command.
+  The familiar `adb shell <command>` prefix is accepted as a compatible
+  alias and removed before execution inside LocalAdb's verified UID 2000
+  shell. Host-only `adb devices/connect/pair/push/pull` actions are never
+  presented as runnable commands. Typing `adb` suggests valid `adb shell`
+  examples instead of suppressing autocomplete.
+- **Commands submenu**: a searchable, categorized built-in command reference
+  accessed through **Adb → Commands**, with descriptions and read-only,
+  modifies-device or host-only badges. **Use in console** pre-fills the
+  existing Adb command field and returns without executing. Host-only ADB
+  commands are copyable reference examples but cannot be selected to run.
+- **Command results**: newest output appears first; the latest result is
+  expanded automatically and older results are collapsed. Tapping another
+  result opens it while closing the previously expanded result, preserving
+  copy actions, exit status, duration, errors and output search.
 - **Settings > ADB connection**: pairing, watchdog, boot/reboot restore,
   TCP/5555. This remains a submenu; the console is the main Adb tab.
 - **Settings > Updates**: shared updater. No duplicate Apps or Adb commands

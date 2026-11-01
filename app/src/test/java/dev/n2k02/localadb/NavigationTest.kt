@@ -12,6 +12,14 @@ class NavigationTest {
             assertEquals(Page.SETTINGS, Navigation.back(it))
         }
     }
+    @Test fun commandsSubmenuReturnsToAdb() {
+        assertEquals(Page.ADB, Navigation.back(Page.COMMAND_LIBRARY))
+        val code = java.io.File("src/main/java/dev/n2k02/localadb/LocalAdbScreen.kt")
+            .readText()
+        assertTrue(code.contains("Page.COMMAND_LIBRARY -> \"Commands\""))
+        assertTrue(code.contains("Page.COMMAND_LIBRARY -> Icons.Rounded.MenuBook"))
+        assertTrue(code.contains("Page.ADB || page == Page.COMMAND_LIBRARY"))
+    }
     @Test fun mainTabsReturnHomeOnBack() {
         listOf(Page.HOME, Page.APPS, Page.ADB, Page.SETTINGS).forEach {
             assertEquals(Page.HOME, Navigation.back(it))
@@ -25,7 +33,7 @@ class NavigationTest {
         }
     }
     @Test fun settingsSubpagesCannotBecomeMainTabs() {
-        listOf(Page.ADB_CONNECTION, Page.UPDATES).forEach { sub ->
+        listOf(Page.ADB_CONNECTION, Page.UPDATES, Page.COMMAND_LIBRARY).forEach { sub ->
             assertThrows(IllegalArgumentException::class.java) {
                 Navigation.selectTab(Page.HOME, sub)
             }

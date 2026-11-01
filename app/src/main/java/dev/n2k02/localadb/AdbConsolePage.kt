@@ -43,6 +43,9 @@ import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -91,13 +94,16 @@ import androidx.compose.ui.unit.dp
  * Executes commands solely with LocalAdb's existing authorized ADB shell UID 2000.
  */
 @Composable
-internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () -> Unit) {
+internal fun AdbConsolePage(
+    modifier: Modifier = Modifier,
+    input: TextFieldValue,
+    onInputChange: (TextFieldValue) -> Unit,
+    onOpenConnection: () -> Unit,
+    onOpenCommands: () -> Unit,
+) {
     val context = LocalContext.current
     val status by AdbEngine.status.collectAsState()
     val console by AdbConsole.state.collectAsState()
-    var input by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(""))
-    }
     var suppressSuggestionsFor by remember { mutableStateOf<String?>(null) }
     var completionIndex by remember { mutableStateOf(CompletionIndex()) }
     var indexRefresh by remember { mutableIntStateOf(0) }
@@ -126,6 +132,12 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
     var confirmClear by remember { mutableStateOf(false) }
     var confirmBookmark by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
+    var expandedEntry by remember { mutableStateOf<AdbConsoleEntry?>(null) }
+    // Always expand the newest result, including when the bounded
+    // 35-entry history evicts its oldest entry and the count stays constant.
+    LaunchedEffect(console.entries.lastOrNull()) {
+        expandedEntry = console.entries.lastOrNull()
+    }
     val completions = remember(input.text, input.selection, completionIndex,
         console.history, console.bookmarks, console.running, searchOpen,
         suppressSuggestionsFor) {
@@ -147,16 +159,16 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                 it.error?.contains(search, ignoreCase = true) == true
         }
     }
+    val newestFirst = remember(filtered) { filtered.asReversed() }
+
     val clipboard = remember(context) {
         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     }
 
     LaunchedEffect(Unit) { AdbConsole.loadBookmarks(context) }
-    LaunchedEffect(filtered.size, search) {
-        // Never scroll to an index removed by the search filter.
-        if (filtered.isNotEmpty() && search.isBlank()) {
-            list.animateScrollToItem(filtered.lastIndex)
-        }
+    LaunchedEffect(console.entries.lastOrNull(), search) {
+        // Newest is index 0; reset scroll on a new output or search.
+        if (filtered.isNotEmpty()) list.scrollToItem(0)
     }
 
     fun paste() {
@@ -165,7 +177,7 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
             clip.getItemAt(0).coerceToText(context)?.toString().orEmpty() else ""
         if (value.isNotBlank()) {
             val pasted = value.take(AdbConsoleProtocol.MAX_COMMAND_CHARS)
-            input = TextFieldValue(pasted, selection = TextRange(pasted.length))
+            onInputChange(TextFieldValue(pasted, selection = TextRange(pasted.length)))
             suppressSuggestionsFor = null
         }
     }
@@ -178,7 +190,7 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
     }
     fun acceptCompletion(candidate: CommandCompletion) {
         val applied = AdbCommandCompletion.apply(input.text, candidate) ?: return
-        input = TextFieldValue(applied.text, selection = TextRange(applied.cursor))
+        onInputChange(TextFieldValue(applied.text, selection = TextRange(applied.cursor)))
         suppressSuggestionsFor = null
     }
 
@@ -222,6 +234,12 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    OutlinedButton(onClick = onOpenCommands) {
+                        Icon(Icons.Rounded.MenuBook, contentDescription = null,
+                            modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Commands")
+                    }
                     IconButton(onClick = { searchOpen = !searchOpen }) {
                         Icon(Icons.Rounded.Search, contentDescription = "Search command output",
                             tint = DashboardTone.INFO.accent)
@@ -277,7 +295,7 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                         onValueChange = { newValue ->
                             if (newValue.text.length <= AdbConsoleProtocol.MAX_COMMAND_CHARS) {
                                 if (newValue.text != input.text) suppressSuggestionsFor = null
-                                input = newValue
+                                onInputChange(newValue)
                             }
                         },
                         modifier = Modifier.weight(1f).onPreviewKeyEvent { event ->
@@ -430,62 +448,90 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                 state = list,
                 verticalArrangement = Arrangement.spacedBy(9.dp),
             ) {
-                items(filtered) { entry ->
-                    ModernPanel(
-                        Modifier.fillMaxWidth(),
-                        when {
-                            entry.error != null || (entry.exitCode != null && entry.exitCode != 0) ->
-                                DashboardTone.ERROR
-                            entry.exitCode == 0 -> DashboardTone.GOOD
-                            else -> DashboardTone.WARN
-                        }
-                    ) {
+                items(newestFirst) { entry ->
+                    val expanded = expandedEntry === entry ||
+                        (search.isNotBlank() && expandedEntry !in newestFirst &&
+                            entry === newestFirst.firstOrNull())
+                    val tone = when {
+                        entry.error != null || (entry.exitCode != null && entry.exitCode != 0) ->
+                            DashboardTone.ERROR
+                        entry.exitCode == 0 -> DashboardTone.GOOD
+                        else -> DashboardTone.WARN
+                    }
+                    ModernPanel(Modifier.fillMaxWidth(), tone) {
                         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Icon(Icons.Rounded.Terminal, contentDescription = null,
                                     modifier = Modifier.size(18.dp),
                                     tint = DashboardTone.INFO.accent)
-                                Text("  " + entry.command, modifier = Modifier.weight(1f),
-                                    fontFamily = FontFamily.Monospace, maxLines = 4,
-                                    overflow = TextOverflow.Ellipsis)
-                                IconButton(onClick = {
-                                    clipboard.setPrimaryClip(
-                                        ClipData.newPlainText("ADB command", entry.command))
-                                }) { Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy command") }
-                            }
-                            ModernStatusChip(
-                                if (entry.error != null) "Failed"
-                                else if (entry.exitCode == 0) "Exit 0"
-                                else if (entry.exitCode != null) "Exit " + entry.exitCode
-                                else "Unknown exit",
-                                when {
-                                    entry.error != null || (entry.exitCode != null && entry.exitCode != 0) ->
-                                        DashboardTone.ERROR
-                                    entry.exitCode == 0 -> DashboardTone.GOOD
-                                    else -> DashboardTone.WARN
+                                Column(
+                                    modifier = Modifier.weight(1f).clickable {
+                                        expandedEntry = if (expanded) null else entry
+                                    },
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Text(entry.command,
+                                        fontFamily = FontFamily.Monospace, maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodyMedium)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        ModernStatusChip(
+                                            when {
+                                                entry.error != null -> "Failed"
+                                                entry.exitCode == 0 -> "Exit 0"
+                                                entry.exitCode != null -> "Exit " + entry.exitCode
+                                                else -> "Unknown exit"
+                                            }, tone, icon = null
+                                        )
+                                        Text(entry.durationMs.toString() + " ms" +
+                                            (if (entry.truncated) " · truncated" else ""),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
-                            )
-                            HorizontalDivider()
-                            Text(
-                                entry.error ?: entry.output.ifEmpty { "(no output)" },
-                                fontFamily = FontFamily.Monospace,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (entry.error != null || (entry.exitCode ?: 0) != 0)
-                                    MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurface,
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    "Exit " + (entry.exitCode?.toString() ?: "unknown") +
-                                        " · " + entry.durationMs + " ms" +
-                                        (if (entry.truncated) " · truncated" else ""),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.weight(1f),
-                                )
                                 IconButton(onClick = {
                                     clipboard.setPrimaryClip(ClipData.newPlainText(
-                                        "ADB output", entry.error ?: entry.output))
-                                }) { Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy output") }
+                                        "ADB command", entry.command))
+                                }) { Icon(Icons.Rounded.ContentCopy,
+                                    contentDescription = "Copy command") }
+                                IconButton(onClick = {
+                                    expandedEntry = if (expanded) null else entry
+                                }) {
+                                    Icon(if (expanded) Icons.Rounded.ExpandLess
+                                        else Icons.Rounded.ExpandMore,
+                                        contentDescription = if (expanded) "Collapse output"
+                                            else "Expand output")
+                                }
+                            }
+                            if (expanded) {
+                                HorizontalDivider()
+                                Text(
+                                    entry.error ?: entry.output.ifEmpty { "(no output)" },
+                                    fontFamily = FontFamily.Monospace,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (entry.error != null ||
+                                        (entry.exitCode != null && entry.exitCode != 0))
+                                        MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurface
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "Exit " + (entry.exitCode?.toString() ?: "unknown") +
+                                            " · " + entry.durationMs + " ms" +
+                                            (if (entry.truncated) " · truncated" else ""),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    IconButton(onClick = {
+                                        clipboard.setPrimaryClip(ClipData.newPlainText(
+                                            "ADB output", entry.error ?: entry.output))
+                                    }) {
+                                        Icon(Icons.Rounded.ContentCopy,
+                                            contentDescription = "Copy output")
+                                    }
+                                }
                             }
                         }
                     }
@@ -544,8 +590,8 @@ internal fun AdbConsolePage(modifier: Modifier = Modifier, onOpenConnection: () 
                     else commands.forEach { command ->
                         Surface(
                             modifier = Modifier.fillMaxWidth().clickable {
-                                input = TextFieldValue(
-                                    command, selection = TextRange(command.length))
+                                onInputChange(TextFieldValue(
+                                    command, selection = TextRange(command.length)))
                                 suppressSuggestionsFor = command
                                 picker = null
                             },

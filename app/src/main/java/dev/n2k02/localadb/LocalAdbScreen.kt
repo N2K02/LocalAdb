@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -34,6 +36,7 @@ private fun iconFor(page: Page): ImageVector = when (page) {
     Page.HOME -> Icons.Rounded.Home
     Page.APPS -> Icons.Rounded.Apps
     Page.ADB -> Icons.Rounded.Terminal
+    Page.COMMAND_LIBRARY -> Icons.Rounded.MenuBook
     Page.SETTINGS -> Icons.Rounded.Settings
     Page.ADB_CONNECTION -> Icons.Rounded.Wifi
     Page.UPDATES -> Icons.Rounded.SystemUpdate
@@ -43,6 +46,7 @@ private fun titleFor(page: Page): String = when (page) {
     Page.HOME -> "Home"
     Page.APPS -> "Apps"
     Page.ADB -> "Adb"
+    Page.COMMAND_LIBRARY -> "Commands"
     Page.SETTINGS -> "Settings"
     Page.ADB_CONNECTION -> "ADB connection"
     Page.UPDATES -> "Updates"
@@ -52,6 +56,10 @@ private fun titleFor(page: Page): String = when (page) {
 @Composable
 internal fun LocalAdbScreen(onQuit: () -> Unit) {
     var page by rememberSaveable { mutableStateOf(Page.HOME) }
+    // Hoist the unsent draft so opening the Commands submenu never loses text.
+    var adbDraft by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     BackHandler(enabled = page != Page.HOME) { page = Navigation.back(page) }
     val updates by LiveUpdater.controller.status.collectAsState()
 
@@ -97,7 +105,7 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
                     icon = { Icon(Icons.Rounded.Apps, contentDescription = null) },
                     label = { Text("Apps") })
                 NavigationBarItem(
-                    selected = page == Page.ADB,
+                    selected = page == Page.ADB || page == Page.COMMAND_LIBRARY,
                     onClick = { page = Navigation.selectTab(page, Page.ADB) },
                     icon = { Icon(Icons.Rounded.Terminal, contentDescription = "ADB shell") },
                     label = { Text("Adb") })
@@ -120,9 +128,22 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
     ) { inset ->
         when (page) {
             Page.HOME -> HomePage(Modifier.padding(inset))
-            Page.ADB -> AdbConsolePage(Modifier.padding(inset)) {
-                page = Page.ADB_CONNECTION
-            }
+            Page.ADB -> AdbConsolePage(
+                modifier = Modifier.padding(inset),
+                input = adbDraft,
+                onInputChange = { adbDraft = it },
+                onOpenConnection = { page = Page.ADB_CONNECTION },
+                onOpenCommands = { page = Page.COMMAND_LIBRARY },
+            )
+            Page.COMMAND_LIBRARY -> CommandLibraryPage(
+                modifier = Modifier.padding(inset),
+                onBack = { page = Page.ADB },
+                onUse = { selected ->
+                    adbDraft = TextFieldValue(selected,
+                        selection = TextRange(selected.length))
+                    page = Page.ADB
+                },
+            )
             Page.SETTINGS -> SettingsPage(Modifier.padding(inset), updates.hasPendingUpdate()) {
                 page = it
             }

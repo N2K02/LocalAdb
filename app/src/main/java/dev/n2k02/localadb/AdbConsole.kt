@@ -68,6 +68,12 @@ internal object AdbConsole {
             state.update { it.copy(notice = problem.message) }
             return
         }
+        val shellCommand = runCatching {
+            AdbConsoleProtocol.deviceShellCommand(command)
+        }.getOrElse { problem ->
+            state.update { it.copy(notice = problem.message) }
+            return
+        }
         if (timeoutMs !in 1000L..AdbConsoleProtocol.MAX_TIMEOUT_MS) {
             state.update { it.copy(notice = "Invalid command timeout") }
             return
@@ -85,7 +91,7 @@ internal object AdbConsole {
             current = scope.launch {
                 val started = SystemClock.elapsedRealtime()
                 try {
-                    val response = AdbTransport.execVerifiedUserCommand(command, timeoutMs)
+                    val response = AdbTransport.execVerifiedUserCommand(shellCommand, timeoutMs)
                     val elapsed = SystemClock.elapsedRealtime() - started
                     val entry = response.fold(
                         onSuccess = { info -> AdbConsoleEntry(

@@ -76,8 +76,30 @@ class AdbCommandCompletionTest {
         assertEquals(results.map { it.value }.distinct(), results.map { it.value })
     }
 
+    @Test fun adbPrefixNowOffersRunnableShellAliasesNotHostVerbs() {
+        assertTrue(suggest("adb").any { it.value == "adb shell" })
+        assertTrue(suggest("adb s").any { it.value == "adb shell id" })
+        assertTrue(suggest("adb shell pm li").any {
+            it.value == "pm list packages"
+        })
+        assertTrue(suggest("adb devices").isEmpty())
+        assertTrue(suggest("adb connect").isEmpty())
+        val packageHint = suggest("adb shell pm path com.ex")
+        assertTrue(packageHint.any { it.value == "com.example.app" })
+        val hint = suggest("adb shell pm grant com.example.app CA")
+        assertTrue(hint.any { it.value == "android.permission.CAMERA" })
+        val selected = suggest("adb").first { it.value == "adb shell" }
+        val applied = AdbCommandCompletion.apply("adb", selected)!!
+        assertEquals("adb shell ", applied.text)
+        assertTrue(suggest("adb shell ").any { it.value == "id" })
+        val engine = java.io.File(
+            "src/main/java/dev/n2k02/localadb/AdbCommandCompletion.kt").readText()
+        assertFalse(engine.contains("AdbTransport.exec("))
+        assertFalse(engine.contains("AdbConsole.execute("))
+        assertFalse(engine.contains("Runtime.getRuntime("))
+    }
+
     @Test fun doesNotExecuteOrOfferHostSideAdbCommands() {
-        assertTrue(suggest("adb shell pm list").isEmpty())
         val engine = java.io.File(
             "src/main/java/dev/n2k02/localadb/AdbCommandCompletion.kt").readText()
         assertFalse(engine.contains("AdbTransport.exec("))

@@ -2,8 +2,9 @@ package dev.n2k02.localadb
 
 /**
  * Pure, local shell completion engine. Suggestions never execute anything.
- * They are deliberately Android SHELL commands, not host-side "adb" verbs:
- * LocalAdb already owns an authenticated UID 2000 shell session.
+ * Only on-device shell commands execute. The familiar "adb shell" prefix
+ * is accepted as an alias and translated before running in our UID 2000 shell;
+ * host-only ADB commands are never suggested as executable.
  */
 internal enum class CompletionKind { COMMAND, PACKAGE, PERMISSION, HISTORY, BOOKMARK }
 
@@ -35,6 +36,12 @@ internal object AdbCommandCompletion {
         "suspend", "unsuspend", "hide", "unhide", "compile"
     )
     private val grantCommands = setOf("grant", "revoke")
+    private val adbPrefix = Regex("^adb\\s+shell(?=\\s|$)", RegexOption.IGNORE_CASE)
+    private val adbExamples = listOf("adb shell", "adb shell id", "adb shell pm list packages",
+        "adb shell getprop ro.build.version.release", "adb shell dumpsys battery",
+        "adb shell settings list secure")
+    private val shellExamples = listOf("id", "pm list packages", "getprop ro.build.version.release",
+        "dumpsys battery", "settings list secure", "logcat -d")
 
     // Common on-device commands and useful command prefixes; no arguments
     // are executed by choosing a suggestion. Names intentionally authored
@@ -110,9 +117,12 @@ internal object AdbCommandCompletion {
         val left = input.substring(segmentStart, cursor)
         val tokens = words.findAll(left).toList()
         if (tokens.isEmpty()) return emptyList()
-        // The current input is already a shell. "adb ..." is a host command,
-        // so never imply that executing it inside LocalAdb's shell will work.
-        if (tokens.first().value.equals("adb", ignoreCase = true)) return emptyList()
+        // Users naturally type "adb", as in aShell You. Our earlier
+        // implementation returned no suggestions at all for that input.
+        if (tokens.first().value.equals("adb", ignoreCase = true)) {
+            return adbSuggestions(input, cursor, segmentStart, left, index,
+                history, bookmarks, limit.coerceAtMost(MAX_SUGGESTIONS))
+        }
         val atWhitespace = left.lastOrNull()?.isWhitespace() == true
         val wordIndex = if (atWhitespace) tokens.size else tokens.lastIndex
         val tokenStart = if (atWhitespace) cursor
@@ -183,6 +193,57 @@ internal object AdbCommandCompletion {
             }
         }
         return results
+    }
+
+    /**
+     * On-device adb-shell compatibility. Never propose host-only ADB verbs
+     * such as adb devices/connect/push: they cannot run inside UID 2000 shell.
+     */
+    private fun adbSuggestions(
+        input: String, cursor: Int, segmentStart: Int, left: String,
+        index: CompletionIndex, history: List<String>, bookmarks: List<String>,
+        limit: Int,
+    ): List<CommandCompletion> {
+        val match = adbPrefix.find(left)
+        if (match != null && match.range.first == 0) {
+            val right = left.substring(match.value.length)
+            val skip = right.length - right.trimStart().length
+            val start = segmentStart + match.value.length + skip
+            val end = input.indexOfAny(charArrayOf(';', '\n', '|', '&'), cursor)
+                .let { if (it < 0) input.length else it }
+            val shellBody = input.substring(start, end)
+            if (shellBody.isBlank()) {
+                val joiner = if (right.isEmpty()) " " else ""
+                return shellExamples.take(limit).map { cmd ->
+                    CommandCompletion(joiner + cmd, CompletionKind.COMMAND,
+                        start, cursor, input.substring(start, cursor),
+                        "On-device shell")
+                }
+            }
+            return suggestions(shellBody, cursor - start, index,
+                history = history.map { it.removePrefix("adb shell ").trimStart() },
+                bookmarks = bookmarks.map { it.removePrefix("adb shell ").trimStart() },
+                limit = limit
+            ).map { suggestion ->
+                val from = start + suggestion.replaceFrom
+                val to = start + suggestion.replaceTo
+                suggestion.copy(replaceFrom = from, replaceTo = to,
+                    original = input.substring(from, to))
+            }
+        }
+
+        // Before the user has finished typing "adb shell", offer a small
+        // set of valid aliases and no unsupported host-side commands.
+        val prefix = left.trimEnd()
+        return adbExamples.asSequence()
+            .filter { it.startsWith(prefix, ignoreCase = true) &&
+                !it.equals(prefix, ignoreCase = true) }
+            .take(limit)
+            .map { example ->
+                CommandCompletion(example, CompletionKind.COMMAND,
+                    segmentStart, cursor, left, "ADB shell alias",
+                    appendSpace = example == "adb shell")
+            }.toList()
     }
 
     private fun context(tokens: List<String>, position: Int, token: String): ContextKind {

@@ -20,6 +20,29 @@ internal object AdbConsoleProtocol {
         return value.replace("\r\n", "\n").replace('\r', '\n').replace('\n', ';')
     }
 
+    /**
+     * This app is an ADB *shell*, not an adb host. A familiar "adb shell"
+     * prefix is allowed; other host-only ADB verbs fail with a clear error.
+     * No ADB command is run merely by completing or selecting text.
+     */
+    fun deviceShellCommand(normalized: String): String {
+        val trimmed = normalized.trim()
+        if (!Regex("^adb(?=\\s|$)", RegexOption.IGNORE_CASE).containsMatchIn(trimmed)) {
+            return trimmed
+        }
+        val prefix = Regex("^adb\\s+shell(?=\\s|$)", RegexOption.IGNORE_CASE)
+            .find(trimmed)
+        require(prefix != null) {
+            "LocalAdb is already an Android shell. Use 'adb shell <command>' or " +
+                "enter the on-device shell command directly; host-only adb verbs are unavailable."
+        }
+        val actual = trimmed.substring(prefix.value.length).trimStart()
+        require(actual.isNotBlank()) {
+            "Enter a command after 'adb shell', e.g. adb shell id."
+        }
+        return actual
+    }
+
     fun wrap(command: String, marker: String): String {
         require(marker.matches(Regex("__localadb_result_[a-z0-9]{12}__")))
         val dollar = '$'
