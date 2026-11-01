@@ -92,6 +92,41 @@ internal object AppAccessPolicy {
         }.sortedWith(compareBy<AppAccess> { it.label.lowercase(java.util.Locale.ROOT) }
             .thenBy { it.packageName }.thenBy { it.uid })
     }
+    /**
+     * Fast in-memory filtering for the compact multi-select app list.
+     * Multiple options within a group match ANY selected option, while
+     * type and access groups combine with AND. Empty group means All.
+     */
+    fun filterSelection(
+        apps: List<AppAccess>,
+        search: String,
+        types: Set<String>,
+        accesses: Set<String>,
+        descending: Boolean = false,
+    ): List<AppAccess> {
+        val term = search.trim()
+        val filtered = apps.asSequence().filter { app ->
+            (term.isEmpty() || app.label.contains(term, ignoreCase = true) ||
+                app.packageName.contains(term, ignoreCase = true)) &&
+                (types.isEmpty() || types.any { type -> when (type) {
+                    "User" -> !app.system
+                    "System" -> app.system
+                    "Disabled" -> !app.enabled
+                    "Hidden" -> !app.hasLauncher
+                    else -> false
+                } }) &&
+                (accesses.isEmpty() || accesses.any { access -> when (access) {
+                    "Shizuku" -> app.shizukuClient
+                    "Android granted" -> app.grantedAdbPermissions.isNotEmpty()
+                    "Android revoked" -> app.declaredAdbPermissions.any {
+                        it !in app.grantedAdbPermissions
+                    }
+                    else -> false
+                } })
+        }.sortedWith(compareBy<AppAccess> { it.label.lowercase(java.util.Locale.ROOT) }
+            .thenBy { it.packageName }.thenBy { it.uid }).toList()
+        return if (descending) filtered.asReversed() else filtered
+    }
 }
 
 internal object AppAccessRepository {

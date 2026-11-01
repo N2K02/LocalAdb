@@ -2,6 +2,14 @@ package dev.n2k02.localadb
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.util.LruCache
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -53,9 +61,10 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
     var scanError by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     var search by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("All") }
-    var shizukuOnly by remember { mutableStateOf(true) }
-    var grantFilter by remember { mutableStateOf<Boolean?>(null) }
+    var selectedTypes by remember { mutableStateOf(setOf<String>()) }
+    var selectedAccess by remember { mutableStateOf(setOf("Shizuku")) }
+    var filtersOpen by remember { mutableStateOf(false) }
+    var descending by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<PendingAndroidGrant?>(null) }
     var changing by remember { mutableStateOf<String?>(null) }
@@ -75,9 +84,13 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
         scanError = null
         NativeShizukuManager.refresh(context)
         try {
-            apps = AppAccessRepository.list(context)
-            shizukuGrants = apps.filter { it.shizukuClient }.associate { app ->
-                app.uid to NativeShizukuManager.granted(context, app.uid)
+            val discovered = AppAccessRepository.list(context)
+            apps = discovered
+            // Binder readback and PackageManager lookups can block: keep them off the UI thread.
+            shizukuGrants = withContext(Dispatchers.IO) {
+                discovered.filter { it.shizukuClient }.associate { app ->
+                    app.uid to NativeShizukuManager.granted(context, app.uid)
+                }
             }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -88,8 +101,8 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
         }
     }
 
-    val visible = remember(apps, search, category, shizukuOnly, grantFilter) {
-        AppAccessPolicy.filter(apps, search, category, shizukuOnly, grantFilter)
+    val visible = remember(apps, search, selectedTypes, selectedAccess, descending) {
+        AppAccessPolicy.filterSelection(apps, search, selectedTypes, selectedAccess, descending)
     }
     val numberOfClients = apps.count { it.shizukuClient }
     val numberOfAndroidGrants = apps.sumOf { it.grantedAdbPermissions.size }
@@ -100,74 +113,107 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(Modifier.fillMaxWidth(),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Column(Modifier.weight(1f)) {
-                                Text("App permissions", style = MaterialTheme.typography.titleMedium)
-                                Text("Verified Shizuku and Android developer access",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            IconButton(onClick = { refresh++ },
-                                enabled = !loading && changing == null && shizukuChanging == null) {
-                                Icon(Icons.Rounded.Refresh, contentDescription = "Refresh apps",
-                                    tint = DashboardTone.INFO.accent)
-                            }
-                        }
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            ModernStatusChip(numberOfClients.toString() + " Shizuku clients",
-                                if (native.serviceReady) DashboardTone.GOOD else DashboardTone.WARN,
-                                icon = Icons.Rounded.Security)
-                            ModernStatusChip(numberOfAndroidGrants.toString() + " Android grants",
-                                DashboardTone.INFO, icon = Icons.Rounded.VerifiedUser)
-                        }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        ModernStatusChip(numberOfClients.toString() + " Shizuku clients",
+                            if (native.serviceReady) DashboardTone.GOOD else DashboardTone.WARN,
+                            icon = Icons.Rounded.Security)
+                        ModernStatusChip(numberOfAndroidGrants.toString() + " Android grants",
+                            DashboardTone.INFO, icon = Icons.Rounded.VerifiedUser)
+                    }
+                    IconButton(onClick = { refresh++ },
+                        enabled = !loading && changing == null && shizukuChanging == null) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = "Refresh apps",
+                            tint = DashboardTone.INFO.accent)
                     }
                 }
-
                 OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    label = { Text("Search apps or package name") },
+                    value = search, onValueChange = { search = it },
+                    placeholder = { Text("Search apps or package name") },
                     leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
                 )
-
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("All", "User", "System", "Disabled", "Hidden").forEach { kind ->
-                        FilterChip(selected = category == kind, onClick = { category = kind },
-                            label = { Text(kind) })
+                    Box {
+                        OutlinedButton(onClick = { filtersOpen = true }) {
+                            Text("Filters · " + (selectedTypes.size + selectedAccess.size))
+                            Spacer(Modifier.width(5.dp))
+                            Icon(Icons.Rounded.ExpandMore, contentDescription = null,
+                                modifier = Modifier.size(18.dp))
+                        }
+                        DropdownMenu(expanded = filtersOpen,
+                            onDismissRequest = { filtersOpen = false }) {
+                            Column(Modifier.heightIn(max = 390.dp)
+                                .verticalScroll(rememberScrollState())) {
+                                Text("App type", modifier = Modifier.padding(
+                                    horizontal = 14.dp, vertical = 7.dp),
+                                    style = MaterialTheme.typography.labelMedium)
+                                listOf("User", "System", "Disabled", "Hidden").forEach { kind ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Checkbox(checked = kind in selectedTypes,
+                                                    onCheckedChange = null)
+                                                Text(kind)
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedTypes = if (kind in selectedTypes)
+                                                selectedTypes - kind else selectedTypes + kind
+                                        },
+                                    )
+                                }
+                                HorizontalDivider()
+                                Text("Access (any selected)", modifier = Modifier.padding(
+                                    horizontal = 14.dp, vertical = 7.dp),
+                                    style = MaterialTheme.typography.labelMedium)
+                                listOf("Shizuku", "Android granted", "Android revoked")
+                                    .forEach { access ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Checkbox(checked = access in selectedAccess,
+                                                        onCheckedChange = null)
+                                                    Text(access)
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedAccess = if (access in selectedAccess)
+                                                    selectedAccess - access
+                                                else selectedAccess + access
+                                            },
+                                        )
+                                    }
+                                DropdownMenuItem(
+                                    text = { Text("All apps · clear filters") },
+                                    onClick = {
+                                        selectedTypes = emptySet()
+                                        selectedAccess = emptySet()
+                                        filtersOpen = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Text(visible.size.toString() + " apps",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    IconButton(onClick = { descending = !descending }) {
+                        Icon(Icons.Rounded.SwapVert,
+                            contentDescription = if (descending) "Sort ascending" else "Sort descending")
                     }
                 }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = shizukuOnly && grantFilter == null,
-                        onClick = { shizukuOnly = true; grantFilter = null },
-                        label = { Text("Shizuku") })
-                    FilterChip(selected = !shizukuOnly && grantFilter == null,
-                        onClick = { shizukuOnly = false; grantFilter = null },
-                        label = { Text("All apps") })
-                    FilterChip(selected = grantFilter == true && !shizukuOnly,
-                        onClick = { shizukuOnly = false; grantFilter = true },
-                        label = { Text("Android granted") })
-                    FilterChip(selected = grantFilter == false && !shizukuOnly,
-                        onClick = { shizukuOnly = false; grantFilter = false },
-                        label = { Text("Android revoked") })
-                }
-                Text(visible.size.toString() + " matching apps · current Android user" +
-                    (if (!adb.connected) " · connect ADB to edit permissions" else ""),
-                    style = MaterialTheme.typography.bodySmall,
+                if (!adb.connected) Text("Connect ADB to edit Android permissions",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (feedback != null) {
-                    Text(feedback.orEmpty(), color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.bodySmall)
-                }
+                if (feedback != null) Text(feedback.orEmpty(),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall)
                 if (scanError != null) {
                     Text(scanError.orEmpty(), color = MaterialTheme.colorScheme.error)
                     OutlinedButton(onClick = { refresh++ }) { Text("Retry app discovery") }
@@ -182,132 +228,123 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
             else "No apps match the selected filters.")
         }
         if (scanError == null) {
-            items(visible, key = { it.packageName + "#" + it.uid }) { app ->
-                var androidExpanded by remember(app.packageName, grantFilter) {
-                    mutableStateOf(grantFilter != null)
-                }
-                ModernPanel(
-                    Modifier.fillMaxWidth(),
-                    tone = when {
-                        app.shizukuClient && shizukuGrants[app.uid] == true -> DashboardTone.GOOD
-                        app.shizukuClient && shizukuGrants[app.uid] == false -> DashboardTone.WARN
-                        else -> DashboardTone.INFO
-                    }
+            items(visible, key = { it.packageName + "#" + it.uid },
+                contentType = { "app" }) { app ->
+                var appExpanded by remember(app.packageName) { mutableStateOf(false) }
+                var androidExpanded by remember(app.packageName) { mutableStateOf(false) }
+                val grant = shizukuGrants[app.uid]
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { appExpanded = !appExpanded }
+                                .padding(horizontal = 10.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             InstalledAppIcon(app.packageName)
                             Column(Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(app.label, style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(app.packageName, style = MaterialTheme.typography.bodySmall,
+                                verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text(app.label, style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(app.packageName +
+                                    (if (app.system) " · System" else " · User") +
+                                    (if (!app.enabled) " · Disabled" else ""),
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    AppCategoryLabel(if (app.system) "System" else "User")
-                                    if (!app.enabled) AppCategoryLabel("Disabled")
-                                }
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            if (app.shizukuClient) {
-                                ModernStatusChip(
-                                    when (shizukuGrants[app.uid]) {
-                                        true -> "Granted"
-                                        false -> "Not granted"
-                                        null -> "Unverified"
-                                    },
-                                    when (shizukuGrants[app.uid]) {
-                                        true -> DashboardTone.GOOD
-                                        false -> DashboardTone.WARN
-                                        null -> DashboardTone.NEUTRAL
-                                    },
-                                    icon = null,
-                                )
-                            }
+                            ModernStatusChip(
+                                if (app.shizukuClient) when (grant) {
+                                    true -> "Granted"
+                                    false -> "Denied"
+                                    null -> "Unknown"
+                                } else app.grantedAdbPermissions.size.toString() + " grants",
+                                if (app.shizukuClient) when (grant) {
+                                    true -> DashboardTone.GOOD
+                                    false -> DashboardTone.WARN
+                                    null -> DashboardTone.NEUTRAL
+                                } else DashboardTone.INFO,
+                                icon = null,
+                            )
+                            Icon(if (appExpanded) Icons.Rounded.ExpandLess
+                                else Icons.Rounded.ExpandMore,
+                                contentDescription = if (appExpanded)
+                                    "Collapse app details" else "Expand app details",
+                                modifier = Modifier.size(20.dp))
                         }
-                        if (app.shizukuClient) {
+                        if (appExpanded) {
                             HorizontalDivider()
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Security, contentDescription = null,
-                                    tint = DashboardTone.INFO.accent)
-                                Column(Modifier.weight(1f)) {
-                                    Text(if (app.shizukuV3) "Shizuku API V3 client"
-                                         else "Potential legacy Shizuku client",
-                                        style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        when (shizukuGrants[app.uid]) {
-                                            true -> "Authorized by the local Shizuku server"
-                                            false -> "Permission not granted"
-                                            null -> "Unable to verify permission"
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Column(Modifier.fillMaxWidth().padding(
+                                start = 12.dp, end = 12.dp, bottom = 9.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (app.shizukuClient) {
+                                    Row(Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(if (app.shizukuV3) "Shizuku API V3" else "Shizuku API",
+                                                style = MaterialTheme.typography.bodyMedium)
+                                            Text(when (grant) {
+                                                true -> "Authorized by the local server"
+                                                false -> "Not authorized"
+                                                null -> "Server permission unavailable"
+                                            }, style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Switch(
+                                            checked = grant == true,
+                                            enabled = native.serviceReady && grant != null &&
+                                                shizukuChanging == null,
+                                            onCheckedChange = { wanted ->
+                                                pendingShizuku = PendingShizukuGrant(app, wanted)
+                                            },
+                                        )
+                                    }
                                 }
-                            }
-                            Row(Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Allow Shizuku API",
-                                    style = MaterialTheme.typography.bodyMedium)
-                                Switch(
-                                    checked = shizukuGrants[app.uid] == true,
-                                    enabled = native.serviceReady &&
-                                        shizukuGrants[app.uid] != null &&
-                                        shizukuChanging == null,
-                                    onCheckedChange = { wanted ->
-                                        pendingShizuku = PendingShizukuGrant(app, wanted)
-                                    },
-                                )
-                            }
-                        }
-                        if (app.declaredAdbPermissions.isNotEmpty()) {
-                            HorizontalDivider()
-                            Row(Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Android permissions · " +
-                                        app.declaredAdbPermissions.size,
-                                        style = MaterialTheme.typography.titleSmall)
-                                    ModernStatusChip(
-                                        app.grantedAdbPermissions.size.toString() + " granted",
-                                        if (app.grantedAdbPermissions.isNotEmpty()) DashboardTone.GOOD
-                                        else DashboardTone.NEUTRAL, icon = null
-                                    )
+                                if (app.declaredAdbPermissions.isNotEmpty()) {
+                                    Row(Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Android permissions · " +
+                                            app.grantedAdbPermissions.size + "/" +
+                                            app.declaredAdbPermissions.size + " granted",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            modifier = Modifier.weight(1f))
+                                        TextButton(onClick = { androidExpanded = !androidExpanded }) {
+                                            Text(if (androidExpanded) "Hide" else "Show")
+                                        }
+                                    }
                                 }
-                                TextButton(onClick = { androidExpanded = !androidExpanded }) {
-                                    Text(if (androidExpanded) "Hide" else "Show")
+                                if (androidExpanded) for (permission in app.declaredAdbPermissions) {
+                                    val granted = permission in app.grantedAdbPermissions
+                                    val grantable = permission in app.grantableAdbPermissions
+                                    val changingThis = changing == app.packageName + "#" + permission
+                                    Row(Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(DashboardPresentation.permissionName(permission),
+                                                style = MaterialTheme.typography.bodySmall)
+                                            Text(when {
+                                                changingThis -> "Verifying Android response…"
+                                                !grantable -> "Not grantable with ADB"
+                                                granted -> "Granted"
+                                                else -> "Not granted"
+                                            }, style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Switch(checked = granted,
+                                            enabled = adb.connected && grantable && changing == null,
+                                            onCheckedChange = { wanted ->
+                                                pending = PendingAndroidGrant(app, permission, wanted)
+                                            })
+                                    }
                                 }
-                            }
-                        }
-                        if (androidExpanded) for (permission in app.declaredAdbPermissions) {
-                            val granted = permission in app.grantedAdbPermissions
-                            val grantable = permission in app.grantableAdbPermissions
-                            val changingThis = changing == app.packageName + "#" + permission
-                            Row(Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Column(Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(DashboardPresentation.permissionName(permission),
-                                        style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        when {
-                                            changingThis -> "Verifying Android's response…"
-                                            !grantable -> "Not grantable via ADB on this Android version"
-                                            granted -> "Granted by Android"
-                                            else -> "Not granted by Android"
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = if (granted) DashboardTone.GOOD.accent
-                                            else MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Switch(
-                                    checked = granted,
-                                    enabled = adb.connected && grantable && changing == null,
-                                    onCheckedChange = { wanted ->
-                                        pending = PendingAndroidGrant(app, permission, wanted)
-                                    },
-                                )
                             }
                         }
                     }
@@ -397,32 +434,27 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
     }
 }
 
+// Reuse decoded icons across scroll and expansion; no per-frame bitmap allocations.
+private val appIconCache = LruCache<String, ImageBitmap>(48)
+
 @Composable
 private fun InstalledAppIcon(packageName: String) {
     val context = LocalContext.current
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, packageName) {
-        value = withContext(Dispatchers.Default) {
+    val bitmap by produceState<ImageBitmap?>(initialValue = appIconCache.get(packageName), packageName) {
+        value = appIconCache.get(packageName) ?: withContext(Dispatchers.Default) {
             runCatching {
                 val drawable = context.packageManager.getApplicationIcon(packageName)
-                val size = 96
+                val size = 64
                 Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).also { result ->
                     val canvas = Canvas(result)
                     drawable.setBounds(0, 0, size, size)
                     drawable.draw(canvas)
                 }.asImageBitmap()
             }.getOrNull()
-        }
+        }?.also { appIconCache.put(packageName, it) }
     }
     if (bitmap != null) Image(bitmap = bitmap!!, contentDescription = null,
-        modifier = Modifier.size(44.dp))
-    else Icon(Icons.Rounded.Apps, contentDescription = null, modifier = Modifier.size(44.dp))
+        modifier = Modifier.size(36.dp))
+    else Icon(Icons.Rounded.Apps, contentDescription = null, modifier = Modifier.size(36.dp))
 }
 
-@Composable
-private fun AppCategoryLabel(text: String) {
-    ModernStatusChip(
-        text,
-        if (text == "Disabled") DashboardTone.WARN else DashboardTone.NEUTRAL,
-        icon = null
-    )
-}

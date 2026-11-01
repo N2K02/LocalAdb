@@ -96,6 +96,32 @@ class AppAccessPolicyTest {
         assertTrue(AppAccessPolicy.filter(apps, "missing", "All", false, null).isEmpty())
     }
 
+    @Test fun multiSelectFiltersAreInclusiveWithinGroupAndConjunctiveAcrossGroups() {
+        val apps = listOf(shizuku, system)
+        assertEquals(listOf(shizuku), AppAccessPolicy.filterSelection(
+            apps, "", emptySet(), setOf("Shizuku")))
+        assertEquals(listOf(system), AppAccessPolicy.filterSelection(
+            apps, "", setOf("System", "Hidden"), setOf("Android granted")))
+        assertEquals(listOf(shizuku), AppAccessPolicy.filterSelection(
+            apps, "", setOf("User", "Hidden"), setOf("Shizuku")))
+        assertEquals(listOf(system), AppAccessPolicy.filterSelection(
+            apps, "", emptySet(), setOf("Android granted", "Android revoked")))
+        assertEquals(apps.size, AppAccessPolicy.filterSelection(
+            apps, "", emptySet(), emptySet()).size)
+        assertEquals(listOf(system), AppAccessPolicy.filterSelection(
+            apps, "tools", emptySet(), emptySet()))
+        assertTrue(AppAccessPolicy.filterSelection(
+            apps, "nothing", emptySet(), emptySet()).isEmpty())
+    }
+
+    @Test fun descendingOrderIsStableAndReversesAscending() {
+        val apps = listOf(system, shizuku)
+        val ascending = AppAccessPolicy.filterSelection(
+            apps, "", emptySet(), emptySet())
+        assertEquals(ascending.asReversed(), AppAccessPolicy.filterSelection(
+            apps, "", emptySet(), emptySet(), descending = true))
+    }
+
     @Test fun repositoryOnlyUpdatesExplicitAndroidGrants() {
         val source = java.io.File(
             "src/main/java/dev/n2k02/localadb/AppAccessRepository.kt"

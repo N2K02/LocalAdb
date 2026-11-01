@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +48,8 @@ import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -128,7 +131,7 @@ internal fun AdbConsolePage(
 
     var search by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
-    var picker by remember { mutableStateOf<String?>(null) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var confirmClear by remember { mutableStateOf(false) }
     var confirmBookmark by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
@@ -137,6 +140,7 @@ internal fun AdbConsolePage(
     // 35-entry history evicts its oldest entry and the count stays constant.
     LaunchedEffect(console.entries.lastOrNull()) {
         expandedEntry = console.entries.lastOrNull()
+        if (console.entries.isNotEmpty()) selectedTab = 0
     }
     val completions = remember(input.text, input.selection, completionIndex,
         console.history, console.bookmarks, console.running, searchOpen,
@@ -196,71 +200,32 @@ internal fun AdbConsolePage(
 
     Column(
         modifier = modifier.fillMaxSize().imePadding().padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (completions.isEmpty()) ModernPanel(
-            Modifier.fillMaxWidth(),
-            if (status.connected) DashboardTone.INFO else DashboardTone.WARN,
+        // Home owns the full connection card; the console needs only live status.
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                ModernSectionHeader(
-                    title = "Command console",
-                    icon = Icons.Rounded.Terminal,
-                    tone = DashboardTone.INFO,
-                    subtitle = if (status.connected) "Authorized Android shell · UID 2000"
-                        else "Connect to verified Android ADB",
-                    status = if (status.connected) "Ready" else "Offline",
-                    statusTone = if (status.connected) DashboardTone.GOOD
-                        else DashboardTone.ERROR,
-                )
-                Row(Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    ModernStatusChip(
-                        if (status.connected) {
-                            if (status.tcpConnected) "TCP/5555" else "Wireless TLS"
-                        } else "Disconnected",
-                        if (status.connected) DashboardTone.GOOD else DashboardTone.WARN,
-                        icon = Icons.Rounded.SettingsEthernet,
-                    )
-                    ModernStatusChip(console.entries.size.toString() + " results",
-                        DashboardTone.INFO, icon = Icons.Rounded.History)
-                    Spacer(Modifier.weight(1f))
-                    OutlinedButton(onClick = onOpenConnection) { Text("Connection") }
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedButton(onClick = onOpenCommands) {
-                        Icon(Icons.Rounded.MenuBook, contentDescription = null,
-                            modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("Commands")
-                    }
-                    IconButton(onClick = { searchOpen = !searchOpen }) {
-                        Icon(Icons.Rounded.Search, contentDescription = "Search command output",
-                            tint = DashboardTone.INFO.accent)
-                    }
-                    IconButton(onClick = { picker = "bookmarks" }) {
-                        Icon(Icons.Rounded.Bookmark, contentDescription = "Saved commands")
-                    }
-                    IconButton(onClick = { picker = "history" }) {
-                        Icon(Icons.Rounded.History, contentDescription = "Command history")
-                    }
-                    IconButton(onClick = { confirmClear = true }) {
-                        Icon(Icons.Rounded.ClearAll, contentDescription = "Clear output")
-                    }
-                    IconButton(onClick = { confirmBookmark = true }) {
-                        Icon(Icons.Rounded.BookmarkAdd, contentDescription = "Save current command")
-                    }
-                }
+            ModernStatusChip(if (status.connected) "Ready" else "Offline",
+                if (status.connected) DashboardTone.GOOD else DashboardTone.ERROR,
+                icon = Icons.Rounded.CheckCircle)
+            ModernStatusChip(
+                if (status.connected) {
+                    if (status.tcpConnected) "TCP/5555" else "Wireless TLS"
+                } else "Disconnected",
+                if (status.connected) DashboardTone.GOOD else DashboardTone.WARN,
+                icon = Icons.Rounded.SettingsEthernet)
+            ModernStatusChip(if (status.connected) "UID 2000" else "No shell",
+                if (status.connected) DashboardTone.INFO else DashboardTone.WARN,
+                icon = null)
+            IconButton(onClick = onOpenConnection) {
+                Icon(Icons.Rounded.SettingsEthernet, contentDescription = "Connection")
             }
         }
 
-        if (searchOpen) {
+        if (searchOpen && selectedTab == 0) {
             OutlinedTextField(
                 value = search, onValueChange = { search = it },
                 modifier = Modifier.fillMaxWidth(), singleLine = true,
@@ -272,18 +237,16 @@ internal fun AdbConsolePage(
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(Icons.Rounded.Terminal, contentDescription = null,
                         tint = DashboardTone.INFO.accent, modifier = Modifier.size(19.dp))
                     Text("Run command", style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f))
-                    ModernStatusChip(
-                        if (console.running) "Running" else "Shell UID 2000",
-                        if (console.running) DashboardTone.WARN
-                        else if (status.connected) DashboardTone.GOOD
-                        else DashboardTone.NEUTRAL,
-                        icon = null
-                    )
+                    OutlinedButton(onClick = onOpenCommands) { Text("Commands") }
+                    IconButton(onClick = { confirmBookmark = true },
+                        enabled = input.text.isNotBlank()) {
+                        Icon(Icons.Rounded.BookmarkAdd, contentDescription = "Save current command")
+                    }
                 }
                 Row(
                     Modifier.fillMaxWidth(),
@@ -400,10 +363,6 @@ internal fun AdbConsolePage(
                             }
                         }
                     }
-                } else {
-                    Text("Commands run through LocalAdb's verified shell only.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -420,8 +379,38 @@ internal fun AdbConsolePage(
         console.notice?.let {
             ModernStatusChip(it, DashboardTone.WARN, icon = null)
         }
-        HorizontalDivider()
+        // Keeping the output in the main viewport avoids wasted vertical space.
+        TabRow(selectedTabIndex = selectedTab) {
+            listOf("Output", "History", "Saved").forEachIndexed { index, name ->
+                Tab(selected = selectedTab == index, onClick = { selectedTab = index },
+                    text = { Text(name) })
+            }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(when (selectedTab) {
+                0 -> console.entries.size.toString() + " results"
+                1 -> console.history.size.toString() + " commands"
+                else -> console.bookmarks.size.toString() + " saved"
+            }, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (selectedTab == 0) {
+                IconButton(onClick = { searchOpen = !searchOpen }) {
+                    Icon(Icons.Rounded.Search, contentDescription = "Search command output")
+                }
+                IconButton(onClick = { confirmClear = true },
+                    enabled = console.entries.isNotEmpty()) {
+                    Icon(Icons.Rounded.ClearAll, contentDescription = "Clear output")
+                }
+            } else if (selectedTab == 1) {
+                IconButton(onClick = { AdbConsole.clearHistory() },
+                    enabled = console.history.isNotEmpty()) {
+                    Icon(Icons.Rounded.ClearAll, contentDescription = "Clear history")
+                }
+            }
+        }
 
+        if (selectedTab == 0) {
         if (filtered.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 ModernPanel(Modifier.fillMaxWidth(), DashboardTone.NEUTRAL) {
@@ -458,8 +447,12 @@ internal fun AdbConsolePage(
                         entry.exitCode == 0 -> DashboardTone.GOOD
                         else -> DashboardTone.WARN
                     }
-                    ModernPanel(Modifier.fillMaxWidth(), tone) {
-                        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Surface(modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, tone.accent.copy(alpha = 0.40f))) {
+                        Column(Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Icon(Icons.Rounded.Terminal, contentDescription = null,
@@ -538,16 +531,33 @@ internal fun AdbConsolePage(
                 }
             }
         }
-
-        Row(
-            Modifier.fillMaxWidth().padding(bottom = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Shell UID 2000 can modify this device · output stays on device.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f))
+        } else {
+            val commands = if (selectedTab == 1) console.history.asReversed()
+                else console.bookmarks
+            if (commands.isEmpty()) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(if (selectedTab == 1) "No command history yet"
+                        else "No saved commands yet",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(Modifier.weight(1f).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    items(commands) { command ->
+                        Surface(modifier = Modifier.fillMaxWidth().clickable {
+                            onInputChange(TextFieldValue(command,
+                                selection = TextRange(command.length)))
+                            suppressSuggestionsFor = command
+                            selectedTab = 0
+                        }, shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                            Text(command, modifier = Modifier.padding(10.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -573,44 +583,6 @@ internal fun AdbConsolePage(
                 confirmBookmark = false
             }, enabled = input.text.isNotBlank()) { Text("Save / Remove") } },
             dismissButton = { TextButton(onClick = { confirmBookmark = false }) { Text("Cancel") } },
-        )
-    }
-    picker?.let { which ->
-        AlertDialog(
-            onDismissRequest = { picker = null },
-            title = { Text(if (which == "history") "Session history" else "Saved commands") },
-            text = {
-                Column(
-                    Modifier.fillMaxWidth().height(320.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    val commands = if (which == "history") console.history else console.bookmarks
-                    if (commands.isEmpty()) Text("No commands yet.")
-                    else commands.forEach { command ->
-                        Surface(
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                onInputChange(TextFieldValue(
-                                    command, selection = TextRange(command.length)))
-                                suppressSuggestionsFor = command
-                                picker = null
-                            },
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            shape = MaterialTheme.shapes.small,
-                        ) {
-                            Text(command, modifier = Modifier.padding(10.dp),
-                                fontFamily = FontFamily.Monospace)
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { picker = null }) { Text("Close") } },
-            dismissButton = {
-                if (which == "history") TextButton(onClick = {
-                    AdbConsole.clearHistory()
-                    picker = null
-                }) { Text("Clear history") }
-            },
         )
     }
 }

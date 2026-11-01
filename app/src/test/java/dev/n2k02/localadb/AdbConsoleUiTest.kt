@@ -14,7 +14,7 @@ class AdbConsoleUiTest {
         val code = source()
         assertFalse(code.contains("Text(\"ADB shell\","))
         assertEquals(1, "Icons.Rounded.ContentPaste".toRegex().findAll(code).count())
-        assertTrue(code.contains("Text(\"Connection\")"))
+        assertTrue(code.contains("contentDescription = \"Connection\""))
     }
     @Test fun filteredSearchResultsCannotCauseOutOfBoundsScroll() {
         val code = source()
@@ -26,7 +26,7 @@ class AdbConsoleUiTest {
     }
     @Test fun consolePanelsAndResultBadgesUseLiveData() {
         val code = source()
-        assertTrue(code.contains("ModernSectionHeader("))
+        assertFalse(code.contains("title = \"Command console\""))
         assertTrue(code.contains("ModernPanel("))
         assertTrue(code.contains("ModernStatusChip("))
         assertTrue(code.contains("console.entries.size.toString()"))
@@ -76,6 +76,16 @@ class AdbConsoleUiTest {
         assertTrue(catalog.contains("entry.usableInLocalAdb"))
         assertFalse(catalog.contains("AdbConsole.execute("))
         assertFalse(catalog.contains("AdbTransport.exec"))
+    }
+
+    @Test fun outputAreaUsesTabsAndCheapSurfacesInsteadOfGradientResultCards() {
+        val code = source()
+        assertTrue(code.contains("TabRow(selectedTabIndex = selectedTab)"))
+        assertTrue(code.contains("listOf(\"Output\", \"History\", \"Saved\")"))
+        assertTrue(code.contains("Surface(modifier = Modifier.fillMaxWidth()"))
+        assertTrue(code.contains("selectedTab = 0"))
+        assertFalse(code.contains("title = \"Command console\""))
+        assertTrue(code.contains("Modifier.weight(1f).fillMaxWidth()"))
     }
 
     @Test fun commandHistoryBookmarksAndAbortAreRetained() {
