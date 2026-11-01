@@ -1,0 +1,17 @@
+.gradle/
+build/
+**/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+*.keystore
+*.jks
+*.p12
+keys.tar
+signing/keys.tar.enc
+gradle/wrapper/gradle-wrapper.jar
+
+# Pinned server payload, downloaded and checksum-verified at build
+/app/src/main/assets/embedded-shizuku-server.apk
