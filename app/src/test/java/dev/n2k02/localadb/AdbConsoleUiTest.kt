@@ -83,7 +83,7 @@ class AdbConsoleUiTest {
         assertTrue(code.contains("TabRow(selectedTabIndex = selectedTab)"))
         assertTrue(code.contains("listOf(\"Output\", \"History\", \"Saved\")"))
         assertTrue(code.contains("Surface(modifier = Modifier.fillMaxWidth()"))
-        assertTrue(code.contains("selectedTab = 0"))
+        assertTrue(code.contains("selectContentTab(0)"))
         assertFalse(code.contains("title = \"Command console\""))
         assertTrue(code.contains("Modifier.weight(1f).fillMaxWidth()"))
         assertTrue(code.contains("showFullOutput"))
@@ -104,6 +104,18 @@ class AdbConsoleUiTest {
         assertTrue(code.contains("IconButton(onClick = onOpenCommands"))
         assertTrue(code.contains("contentDescription = \"Connection\""))
         assertTrue(code.contains("if (console.running) AdbConsole.interrupt() else execute()"))
+    }
+
+    @Test fun adbSubtabsSwipeAndBackInVisitOrder() {
+        val code = source()
+        assertTrue(code.contains("TabVisitHistory.select(tabHistory, tab)"))
+        assertTrue(code.contains("BackHandler(enabled = tabHistory.size > 1)"))
+        assertTrue(code.contains("TabVisitHistory.pop(tabHistory)"))
+        assertTrue(code.contains("onClick = { selectContentTab(index) }"))
+        assertTrue(code.contains("onSwipeLeft = { selectContentTab((selectedTab + 1).coerceAtMost(2)) }"))
+        assertTrue(code.contains("onSwipeRight = { selectContentTab((selectedTab - 1).coerceAtLeast(0)) }"))
+        assertTrue(code.contains("consumeOnNavigation = true"))
+        assertTrue(code.contains("selectContentTab(0)"))
     }
 
     @Test fun commandHistoryBookmarksAndAbortAreRetained() {

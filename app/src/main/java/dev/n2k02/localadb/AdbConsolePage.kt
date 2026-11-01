@@ -3,6 +3,7 @@ package dev.n2k02.localadb
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -137,6 +138,18 @@ internal fun AdbConsolePage(
     var search by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var tabHistory by rememberSaveable { mutableStateOf(listOf(0)) }
+
+    fun selectContentTab(tab: Int) {
+        if (tab !in 0..2) return
+        tabHistory = TabVisitHistory.select(tabHistory, tab)
+        selectedTab = tab
+    }
+    BackHandler(enabled = tabHistory.size > 1) {
+        val (previousHistory, previousTab) = TabVisitHistory.pop(tabHistory)
+        tabHistory = previousHistory
+        selectedTab = previousTab ?: 0
+    }
     var confirmClear by remember { mutableStateOf(false) }
     var confirmBookmark by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
@@ -145,7 +158,7 @@ internal fun AdbConsolePage(
     // 35-entry history evicts its oldest entry and the count stays constant.
     LaunchedEffect(console.entries.lastOrNull()) {
         expandedEntry = console.entries.lastOrNull()
-        if (console.entries.isNotEmpty()) selectedTab = 0
+        if (console.entries.isNotEmpty()) selectContentTab(0)
     }
     val completions = remember(input.text, input.selection, completionIndex,
         console.history, console.bookmarks, console.running, searchOpen,
@@ -204,7 +217,15 @@ internal fun AdbConsolePage(
     }
 
     Column(
-        modifier = modifier.fillMaxSize().imePadding().padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier = modifier.fillMaxSize().imePadding()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .swipeTabNavigation(
+                onSwipeLeft = { selectContentTab((selectedTab + 1).coerceAtMost(2)) },
+                onSwipeRight = { selectContentTab((selectedTab - 1).coerceAtLeast(0)) },
+                canSwipeLeft = selectedTab < 2,
+                canSwipeRight = selectedTab > 0,
+                consumeOnNavigation = true,
+            ),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         // Terminal-style input bar: all shell status belongs inside the command card.
@@ -418,7 +439,7 @@ internal fun AdbConsolePage(
         // Keeping the output in the main viewport avoids wasted vertical space.
         TabRow(selectedTabIndex = selectedTab) {
             listOf("Output", "History", "Saved").forEachIndexed { index, name ->
-                Tab(selected = selectedTab == index, onClick = { selectedTab = index },
+                Tab(selected = selectedTab == index, onClick = { selectContentTab(index) },
                     text = { Text(name) })
             }
         }
@@ -594,7 +615,7 @@ internal fun AdbConsolePage(
                             onInputChange(TextFieldValue(command,
                                 selection = TextRange(command.length)))
                             suppressSuggestionsFor = command
-                            selectedTab = 0
+                            selectContentTab(0)
                         }, shape = MaterialTheme.shapes.small,
                             color = MaterialTheme.colorScheme.surfaceContainerLow) {
                             Text(command, modifier = Modifier.padding(10.dp),

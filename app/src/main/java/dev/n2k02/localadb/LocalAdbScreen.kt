@@ -60,7 +60,36 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
     var adbDraft by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
-    BackHandler(enabled = page != Page.HOME) { page = Navigation.back(page) }
+    // Main tabs remember actual visit order, rather than always returning Home.
+    var visitedTabs by rememberSaveable { mutableStateOf(listOf(Page.HOME.name)) }
+    val mainTabs = listOf(Page.HOME, Page.APPS, Page.ADB, Page.SETTINGS)
+
+    fun selectMainTab(tab: Page) {
+        val target = Navigation.selectTab(page, tab)
+        visitedTabs = TabVisitHistory.select(visitedTabs, target.name)
+        page = target
+    }
+
+    BackHandler(enabled = page != Page.HOME || visitedTabs.size > 1) {
+        when (page) {
+            Page.COMMAND_LIBRARY, Page.ADB_CONNECTION, Page.UPDATES -> {
+                val parent = Navigation.back(page)
+                if (parent != Page.valueOf(visitedTabs.last())) {
+                    visitedTabs = TabVisitHistory.select(visitedTabs, parent.name)
+                }
+                page = parent
+            }
+            else -> {
+                val (remaining, previous) = TabVisitHistory.pop(visitedTabs)
+                if (previous != null) {
+                    visitedTabs = remaining
+                    page = Page.valueOf(previous)
+                } else {
+                    page = Page.HOME
+                }
+            }
+        }
+    }
     val updates by LiveUpdater.controller.status.collectAsState()
 
     Scaffold(
@@ -96,22 +125,22 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 NavigationBarItem(
                     selected = page == Page.HOME,
-                    onClick = { page = Navigation.selectTab(page, Page.HOME) },
+                    onClick = { selectMainTab(Page.HOME) },
                     icon = { Icon(Icons.Rounded.Home, contentDescription = null) },
                     label = { Text("Home") })
                 NavigationBarItem(
                     selected = page == Page.APPS,
-                    onClick = { page = Navigation.selectTab(page, Page.APPS) },
+                    onClick = { selectMainTab(Page.APPS) },
                     icon = { Icon(Icons.Rounded.Apps, contentDescription = null) },
                     label = { Text("Apps") })
                 NavigationBarItem(
                     selected = page == Page.ADB || page == Page.COMMAND_LIBRARY,
-                    onClick = { page = Navigation.selectTab(page, Page.ADB) },
+                    onClick = { selectMainTab(Page.ADB) },
                     icon = { Icon(Icons.Rounded.Terminal, contentDescription = "ADB shell") },
                     label = { Text("Adb") })
                 NavigationBarItem(
                     selected = page in listOf(Page.SETTINGS, Page.ADB_CONNECTION, Page.UPDATES),
-                    onClick = { page = Navigation.selectTab(page, Page.SETTINGS) },
+                    onClick = { selectMainTab(Page.SETTINGS) },
                     icon = {
                         N2K02UpdateBadgedIcon(updates) {
                             Icon(Icons.Rounded.Settings, contentDescription = "Settings")
@@ -126,10 +155,23 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
             }
         }
     ) { inset ->
+        // A passive gesture waits for a real horizontal swipe and leaves ordinary
+        // scrolling and input alone. ADB's nested output tabs take precedence.
+        val currentIndex = mainTabs.indexOf(page)
+        val pageModifier = if (currentIndex >= 0) {
+            Modifier.padding(inset).swipeTabNavigation(
+                onSwipeLeft = { if (currentIndex < mainTabs.lastIndex)
+                    selectMainTab(mainTabs[currentIndex + 1]) },
+                onSwipeRight = { if (currentIndex > 0)
+                    selectMainTab(mainTabs[currentIndex - 1]) },
+                canSwipeLeft = currentIndex < mainTabs.lastIndex,
+                canSwipeRight = currentIndex > 0,
+            )
+        } else Modifier.padding(inset)
         when (page) {
-            Page.HOME -> HomePage(Modifier.padding(inset))
+            Page.HOME -> HomePage(pageModifier)
             Page.ADB -> AdbConsolePage(
-                modifier = Modifier.padding(inset),
+                modifier = pageModifier,
                 input = adbDraft,
                 onInputChange = { adbDraft = it },
                 onOpenConnection = { page = Page.ADB_CONNECTION },
@@ -144,11 +186,11 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
                     page = Page.ADB
                 },
             )
-            Page.SETTINGS -> SettingsPage(Modifier.padding(inset), updates.hasPendingUpdate()) {
+            Page.SETTINGS -> SettingsPage(pageModifier, updates.hasPendingUpdate()) {
                 page = it
             }
             Page.ADB_CONNECTION -> AdbConnectionPage(Modifier.padding(inset))
-            Page.APPS -> AppsPage(Modifier.padding(inset))
+            Page.APPS -> AppsPage(pageModifier)
             Page.UPDATES -> UpdatesPage(Modifier.padding(inset))
         }
     }
