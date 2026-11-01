@@ -6,6 +6,8 @@ import android.util.Log
 import io.github.muntashirakon.adb.AbsAdbConnectionManager
 import io.github.muntashirakon.adb.AdbStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -166,45 +168,78 @@ object AdbTransport {
      */
     suspend fun exec(command: String, timeoutMs: Long = 15_000): Result<String> =
         withContext(Dispatchers.IO) {
-            // isConnected, not merely "a manager object exists". Opening a
-            // stream on a manager whose connection has died does not throw - it
-            // hands back a stream that yields nothing, so every command
-            // silently "succeeds" with no output.
-            val mgr = manager
-            if (mgr == null || !mgr.isConnected) {
-                return@withContext Result.failure(IllegalStateException("ADB is not connected"))
-            }
-
             mutex.withLock {
-                runCatching {
-                    // Watching from before the stream is opened: opening one
-                    // can hang too, and then only closing the whole
-                    // connection lets it go.
-                    var session: ShellSession? = shell
-                    val watchdog = launch {
-                        kotlinx.coroutines.delay(timeoutMs)
-                        // The command's first word only: the daemon's launch
-                        // line carries its token.
-                        Log.w(TAG, "exec: '${command.substringBefore(' ')} ...' timed out after ${timeoutMs}ms")
-                        session?.let { runCatching { it.close() } } ?: runCatching { mgr.close() }
-                        shell = null
-                    }
-                    session = session ?: ShellSession(mgr.openStream(SHELL_SERVICE)).also { shell = it }
-                    try {
-                        session!!.run(command)
-                    } catch (t: Throwable) {
-                        // A desynchronised session stays desynchronised, and a
-                        // half-read one would mis-attribute the next command's
-                        // output. Drop it; the next call opens a fresh one.
-                        runCatching { session?.close() }
-                        shell = null
-                        throw t
-                    } finally {
-                        watchdog.cancel()
-                    }
+                try {
+                    Result.success(runLocked(command, timeoutMs))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    Result.failure(failure)
                 }
             }
         }
+
+    /**
+     * Execute a user-entered shell command. UID validation and command execution
+     * share ONE transport mutex, preventing privileged commands from racing with
+     * another shell command while the identity is being established.
+     */
+    internal suspend fun execVerifiedUserCommand(
+        command: String,
+        timeoutMs: Long = AdbConsoleProtocol.DEFAULT_TIMEOUT_MS
+    ): Result<AdbConsoleProtocol.Parsed> = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            try {
+                require(timeoutMs in 1000L..AdbConsoleProtocol.MAX_TIMEOUT_MS)
+                val validated = AdbConsoleProtocol.normalized(command)
+                // Do not rely on a cached Compose badge or a past UID 2000 check.
+                val identity = runLocked("id -u", 3_000).trim().lines().lastOrNull()?.trim()
+                check(identity == "2000") { "ADB is not a verified Android shell UID 2000" }
+                val marker = "__localadb_result_" +
+                    java.util.UUID.randomUUID().toString().replace("-", "").take(12) + "__"
+                val response = runLocked(AdbConsoleProtocol.wrap(validated, marker), timeoutMs)
+                Result.success(AdbConsoleProtocol.parse(response, marker))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Result.failure(failure)
+            }
+        }
+    }
+
+    /**
+     * Caller holds the transport mutex. Timeout always closes the stream, so
+     * the next request cannot inherit partial output from a previous command.
+     */
+    private suspend fun runLocked(command: String, timeoutMs: Long): String = coroutineScope {
+        require(timeoutMs in 500L..AdbConsoleProtocol.MAX_TIMEOUT_MS)
+        val mgr = manager ?: error("ADB connection is not established")
+        check(mgr.isConnected) { "ADB connection lost" }
+        var session: ShellSession? = shell
+        val watchdog = launch {
+            delay(timeoutMs)
+            Log.w(TAG, "ADB shell command timed out")
+            session?.let { runCatching { it.close() } } ?: runCatching { mgr.close() }
+            shell = null
+        }
+        try {
+            session = session ?: ShellSession(mgr.openStream(SHELL_SERVICE)).also { shell = it }
+            session!!.run(command)
+        } catch (failure: Throwable) {
+            runCatching { session?.close() }
+            shell = null
+            throw failure
+        } finally {
+            watchdog.cancel()
+        }
+    }
+
+    /** Stops the current shell without running a new command or exposing output. */
+    internal fun interruptUserShell() {
+        val toClose = shell
+        shell = null
+        runCatching { toClose?.close() }
+    }
 
     /**
      * ONE shell stream, reused for every command, because opening one per
@@ -312,10 +347,26 @@ object AdbTransport {
             }
 
             val sb = StringBuilder()
+            var truncated = false
+            var userCompletionMarker: String? = null
             while (true) {
                 val line = reader.readLine() ?: throw java.io.IOException("shell stream closed")
                 if (line.trimEnd() == end) break
-                sb.appendLine(line)
+                // Continue draining the shell until its marker, but do not allocate
+                // unbounded memory for a command that produces gigabytes of output.
+                if (sb.length + line.length + 1 <= AdbConsoleProtocol.MAX_CAPTURE_CHARS) {
+                    sb.appendLine(line)
+                } else {
+                    truncated = true
+                    // Preserve our separately randomized user-command exit marker even
+                    // when the beginning of the output has exceeded the capture cap.
+                    if (line.startsWith("__localadb_result_") &&
+                        line.length <= 100) userCompletionMarker = line
+                }
+            }
+            if (truncated) {
+                sb.appendLine("[LocalAdb output truncated]")
+                userCompletionMarker?.let { sb.appendLine(it) }
             }
             return sb.toString().trimEnd()
         }

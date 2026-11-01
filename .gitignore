@@ -12,3 +12,6 @@ captures/
 keys.tar
 signing/keys.tar.enc
 gradle/wrapper/gradle-wrapper.jar
+
+# Pinned server payload, downloaded and checksum-verified at build
+/app/src/main/assets/embedded-shizuku-server.apk

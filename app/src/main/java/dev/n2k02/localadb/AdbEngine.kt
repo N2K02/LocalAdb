@@ -134,6 +134,12 @@ internal object AdbEngine {
             message = if (tcp) "Authorized Android shell (UID 2000), localhost TCP/5555."
                       else "Authorized Android shell (UID 2000), Wireless debugging TLS.") }
         stopDiscovery()
+        // Mirror VRec's verified-shell setup: grant only eligible LocalAdb permissions
+        // and then launch the embedded Shizuku manager.
+        scope.launch {
+            AdbPermissionBootstrap.configure(context)
+            NativeShizukuManager.start(context)
+        }
         if (AdbSettings.get(context, AdbSettings.Option.RESTORE_AFTER_RESTART)) {
             // This is opt-in, and is attempted only after verifying our own shell.
             val safePackage = context.packageName.takeIf { it.matches(Regex("[A-Za-z0-9_.]+")) } ?: return

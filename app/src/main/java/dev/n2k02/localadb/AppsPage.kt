@@ -32,10 +32,12 @@ import kotlinx.coroutines.withContext
 private data class PendingAndroidGrant(
     val app: AppAccess, val permission: String, val grant: Boolean,
 )
+private data class PendingShizukuGrant(val app: AppAccess, val grant: Boolean)
 
 /**
- * Shizuku = compatibility only / authorization UNKNOWN / hand off to installed manager.
- * Android development permissions = verified PackageManager state / per-permission user action.
+ * LocalAdb is its OWN Shizuku manager: Binder-backed authorization is read/changed
+ * through its own embedded server and confirmed by readback.
+ * Android development permissions use the separate verified ADB shell.
  */
 @Composable
 internal fun AppsPage(modifier: Modifier = Modifier) {
@@ -43,6 +45,7 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
     val lifecycle = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val adb by AdbEngine.status.collectAsState()
+    val native by NativeShizukuManager.state.collectAsState()
 
     var apps by remember { mutableStateOf<List<AppAccess>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -55,7 +58,9 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
     var feedback by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<PendingAndroidGrant?>(null) }
     var changing by remember { mutableStateOf<String?>(null) }
-    var manager by remember { mutableStateOf<String?>(null) }
+    var shizukuGrants by remember { mutableStateOf<Map<Int, Boolean?>>(emptyMap()) }
+    var pendingShizuku by remember { mutableStateOf<PendingShizukuGrant?>(null) }
+    var shizukuChanging by remember { mutableStateOf<Int?>(null) }
 
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -64,26 +69,21 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
         lifecycle.lifecycle.addObserver(observer)
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(refresh) {
+    LaunchedEffect(refresh, native.serviceReady) {
         loading = true
         scanError = null
-        manager = withContext(Dispatchers.IO) {
-            AppAccessRepository.installedManager(context)
-        }
+        NativeShizukuManager.refresh(context)
         try {
             apps = AppAccessRepository.list(context)
+            shizukuGrants = apps.filter { it.shizukuClient }.associate { app ->
+                app.uid to NativeShizukuManager.granted(context, app.uid)
+            }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             scanError = "Android app discovery failed: " +
                 (e.localizedMessage ?: "try refreshing or checking package visibility")
         } finally {
             loading = false
-        }
-    }
-
-    fun openManager() {
-        if (!AppAccessRepository.openShizukuManager(context)) {
-            feedback = "Could not open the installed Shizuku manager. Check that it is enabled."
         }
     }
 
@@ -115,27 +115,31 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                 }
 
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(Icons.Rounded.Security, contentDescription = null)
-                            Text("Shizuku API access", style = MaterialTheme.typography.titleMedium)
+                            Text("LocalAdb Shizuku manager",
+                                style = MaterialTheme.typography.titleMedium)
                         }
-                        Text("Authorization: managed by Shizuku (not readable here)",
-                            style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "LocalAdb can find apps declaring Shizuku support, but only " +
-                                "Shizuku's own manager can approve or revoke their API access.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall)
-                        if (manager != null) {
-                            Button(onClick = ::openManager) { Text("Open installed Shizuku manager") }
-                        } else {
-                            Text("Shizuku manager not installed or not enabled.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(native.message, style = MaterialTheme.typography.bodyMedium)
+                        Text(if (native.serviceReady)
+                            "Third-party Shizuku clients can request access here. " +
+                            "Grants are verified against the bundled server."
+                        else "Connect Android ADB shell UID 2000 and start the embedded " +
+                            "Shizuku server. No separate Shizuku application is required.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = {
+                                NativeShizukuManager.start(context, explicit = true)
+                            }, enabled = adb.connected && !native.starting && !native.serviceReady) {
+                                Text(if (native.starting) "Starting" else "Start server")
+                            }
                             OutlinedButton(onClick = {
-                                if (!AppAccessRepository.openProject(context))
-                                    feedback = "No browser could open the Shizuku-Next project."
-                            }) { Text("Shizuku-Next project") }
+                                NativeShizukuManager.refresh(context)
+                                refresh++
+                            }) { Text("Check status") }
                         }
                     }
                 }
@@ -232,13 +236,29 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                                     Text(if (app.shizukuV3) "Shizuku API V3 client"
                                          else "Potential legacy Shizuku client",
                                         style = MaterialTheme.typography.bodyMedium)
-                                    Text("Shizuku access: unknown here · managed by Shizuku",
+                                    Text(
+                                        when (shizukuGrants[app.uid]) {
+                                            true -> "Shizuku API: Granted by local server"
+                                            false -> "Shizuku API: Not granted"
+                                            null -> "Shizuku API: Unverified (server unavailable)"
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
-                            TextButton(onClick = ::openManager, enabled = manager != null) {
-                                Text("Manage in Shizuku")
+                            Row(Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Allow Shizuku API",
+                                    style = MaterialTheme.typography.bodyMedium)
+                                Switch(
+                                    checked = shizukuGrants[app.uid] == true,
+                                    enabled = native.serviceReady &&
+                                        shizukuGrants[app.uid] != null &&
+                                        shizukuChanging == null,
+                                    onCheckedChange = { wanted ->
+                                        pendingShizuku = PendingShizukuGrant(app, wanted)
+                                    },
+                                )
                             }
                         }
                         if (app.declaredAdbPermissions.isNotEmpty()) {
@@ -279,6 +299,40 @@ internal fun AppsPage(modifier: Modifier = Modifier) {
                 }
             }
         }
+    }
+
+    pendingShizuku?.let { request ->
+        AlertDialog(
+            onDismissRequest = { pendingShizuku = null },
+            title = { Text(if (request.grant)
+                "Grant Shizuku API access?" else "Revoke Shizuku API access?") },
+            text = { Text(
+                "App: " + request.app.label + "\nPackage: " + request.app.packageName +
+                "\n\nShizuku access runs the app's privileged requests as shell UID 2000. " +
+                "Only grant this to apps you trust."
+            ) },
+            confirmButton = {
+                Button(onClick = {
+                    pendingShizuku = null
+                    shizukuChanging = request.app.uid
+                    scope.launch {
+                        try {
+                            val result = NativeShizukuManager.changeGrant(
+                                context, request.app.uid, request.grant)
+                            feedback = result.fold(
+                                onSuccess = { "Local Shizuku server confirmed the change." },
+                                onFailure = { "Shizuku grant failed: " +
+                                    (it.localizedMessage ?: "unverified result") }
+                            )
+                            refresh++
+                        } finally { shizukuChanging = null }
+                    }
+                }) { Text(if (request.grant) "Grant" else "Revoke") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingShizuku = null }) { Text("Cancel") }
+            },
+        )
     }
 
     pending?.let { request ->

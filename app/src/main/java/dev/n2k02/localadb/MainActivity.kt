@@ -19,6 +19,8 @@ class MainActivity : ComponentActivity() {
         LiveUpdater.onResume(this)
     }
     private fun quit() {
+        AdbConsole.shutdown()
+        NativeShizukuManager.shutdown(applicationContext)
         AdbEngine.shutdown(applicationContext)
         LiveUpdater.shutdown()
         appLog.shutdown()

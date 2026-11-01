@@ -1,2 +1,3 @@
 <resources><string name="app_name">LocalAdb</string>    <string name="adb_accessibility_description">Optional: only reads the Android Settings pairing code dialog to connect the local ADB client.</string>
+    <string name="shizuku_permission_description">Allows compatible apps to use the privileged local Shizuku Binder with your approval.</string>
 </resources>

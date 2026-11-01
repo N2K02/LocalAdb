@@ -49,6 +49,8 @@ dependencies {
     implementation("org.conscrypt:conscrypt-android:2.7.0")
     implementation("androidx.work:work-runtime-ktx:2.10.5")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     testImplementation("junit:junit:4.13.2")
 }
 val verifySharedUpdaterVersion = tasks.register("verifySharedUpdaterVersion") {
@@ -67,4 +69,17 @@ val verifySharedUpdaterVersion = tasks.register("verifySharedUpdaterVersion") {
 }
 tasks.matching { it.name == "preBuild" || it.name == "check" }.configureEach {
     dependsOn(verifySharedUpdaterVersion)
+}
+
+
+// Bundle the upstream Apache-2.0 server inside LocalAdb; no companion install.
+val prepareEmbeddedShizuku = tasks.register<Exec>("prepareEmbeddedShizuku") {
+    group = "build setup"
+    description = "Download checksum-pinned Shizuku-Next server payload"
+    workingDir = rootProject.projectDir
+    commandLine("bash", "scripts/fetch-embedded-shizuku.sh")
+    outputs.file(layout.projectDirectory.file("src/main/assets/embedded-shizuku-server.apk"))
+}
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(prepareEmbeddedShizuku)
 }

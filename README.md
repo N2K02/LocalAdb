@@ -1,43 +1,57 @@
 # LocalAdb
 
-On-device Android ADB client using N2K02 theme and updater and the same verified-shell-UID-2000 ADB automation approach as VRec (without VRec's recording-specific daemon).
+LocalAdb is an on-device Android ADB client and native Shizuku-compatible
+manager. It uses the N2K02 theme and updater, the canonical mRadio single
+header and VRec-style Home status cards.
 
 ## Navigation
 
-- Home: live ADB status, four compact status tiles, Start/Stop/Restart, automatic permissions summary and Apps card.
-- Settings -> ADB connection: pairing, automatic code detection, watchdog, boot recovery and TCP/5555.
-- Settings -> Apps: Shizuku clients and individually controlled Android development permissions.
-- Settings -> Updates: shared n2k02updater.
-- Quit: cancels discovery/recovery, closes transport and prevents automatic restart until explicitly started.
+- Home: verified UID 2000, pairing/TCP state, native Shizuku server health,
+  eligible Android permission grants and shortcuts.
+- Adb: aShell You-inspired internal command console with output/exit codes,
+  searchable bounded history, bookmarks, copy/paste and interrupt.
+- Settings > ADB connection: pairing, watchdog, boot/reboot restore, TCP/5555.
+- Settings > Apps: native Shizuku access controls separate from the verified
+  Android developer-permission grant/revoke controls.
+- Settings > Updates: shared updater. Logs and Diagnostics removed.
+- Quit: interrupts commands, stops native Shizuku, cancels recovery and closes ADB.
 
-## First-time Android setup
+## Native Shizuku (no extra manager app installed)
 
-1. Enable Developer options and Wireless debugging (Android 11+); allow nearby-network access if Android prompts.
-2. Tap Find / Retry under ADB connection; open Android's Pair device with pairing code dialog.
-3. Grant the optional LocalAdb Accessibility service if you want code auto-detection. It reads only Android Settings pairing dialogs. Otherwise enter the six-digit code manually; codes are not stored.
-4. LocalAdb creates a persistent private ADB client identity and pairs to the on-device TLS listener.
-5. Shell UID 2000 must be verified live. With TCP/5555 enabled, the verified shell switches adbd and LocalAdb reconnects to localhost port 5555 and verifies again.
-6. Once connected, eligible LocalAdb permissions are configured automatically and confirmed by Android PackageManager. Restricted settings are granted only when requested by the corresponding option. Android may refuse individual grants and the UI reports that.
+After LocalAdb verifies a live shell UID 2000 it:
 
-## Safety and recovery
+1. Attempts its own eligible Android permissions and confirms readback.
+2. Verifies LocalAdb owns the globally named Shizuku manager permission.
+3. Streams the bundled Apache-2.0 Shizuku-Next payload to the verified shell
+   using a UID-2000-restricted ContentProvider.
+4. Checks the exact SHA-256 on the device and launches it using app_process.
+5. Receives the server Binder through the official Shizuku provider.
+6. Uses server permission flags for Shizuku grant/revoke and explicit approval
+   requests from compatible apps. Never claims a grant without readback.
 
-- Connection watchdog, WorkManager backup and capped exponential recovery backoff.
-- Start on boot is independent of the watchdog setting; recovery never silently restarts after explicit Stop or Quit.
-- Wireless debugging restore after reboot is OFF by default, requires explicit opt-in, saved pairing and Android WRITE_SECURE_SETTINGS. Never override a manual off setting within the same boot or unknown boot count.
-- The TCP/5555 daemon may be reachable by other devices on the network; LocalAdb itself connects only to 127.0.0.1. Use Disable TCP/5555 when not needed.
+The payload is bundled as an APK asset, NOT installed as a separate Android app.
+See THIRD_PARTY_NOTICES.md for the source, license and SHA-256.
 
-## Shizuku and app permissions
+Important compatibility limits: globally named MANAGER/API_V23 permissions can
+be owned by only one installed Shizuku manager. If another manager owns these,
+LocalAdb fails closed and reports the conflict. Resolve it manually; LocalAdb
+will not uninstall or impersonate another manager. Older Shizuku clients that
+hard-code the official manager package moe.shizuku.privileged.api may not find
+the LocalAdb manager (dev.n2k02.localadb). Real-device testing is necessary
+before calling it fully drop-in compatible.
 
-The Apps page draws on Shizuku-Next (https://github.com/rushiranpise/Shizuku-Next, Apache-2.0). It scans installed packages for the declared Shizuku API permission (with V3 metadata detection and legacy-client labeling), displays icons/names/packages, and offers search plus User/System/Disabled/Hidden and independent Shizuku/Android-grant filters. Scan errors are shown instead of being mistaken for an empty list.
+## ADB command privacy and safety
 
-Android development permissions are listed only when the target app requests them. A switch is enabled only when Android's permission definition carries the development protection flag and the permission is on LocalAdb's explicit allowlist. Every grant/revoke needs a confirmation dialog, is limited to the current Android user, rechecks a live ADB shell UID 2000, and verifies the result via PackageManager readback. Failed or unavailable grants never appear successful. No bulk permission grants to other apps occur.
-
-Shizuku API access is different from Android pm grant. Shizuku-Next checks the installed MANAGER UID for changes to its authorization flags. LocalAdb cannot directly grant Shizuku API access simply because it has ADB shell UID 2000. The UI opens the installed Shizuku manager instead, shows Shizuku authorization as externally managed/unknown, and never claims that an unchecked Shizuku grant succeeded. If no manager is installed, an explicit link opens the Shizuku-Next project. LocalAdb does not impersonate or replace Shizuku.
-
-The sideloaded app manager needs Android package visibility and declares QUERY_ALL_PACKAGES; this permission is restricted on Google Play.
+The console executes user-entered commands only after re-verifying a live shell
+UID 2000 under the transport mutex. These commands may change device state.
+Console history and captured output remain in memory; only explicit bookmarks
+persist in private storage. Quit stops command execution and clears history.
+ADB TLS pairing identity is persisted privately. TCP/5555 may be reachable on
+the network even though LocalAdb connects only to localhost.
 
 ## CI
 
-One experimental PR at a time. Existing pipeline: unit tests, lint, signing, experimental prereleases, stable releases after main merge, Dependabot and updater-compatibility checks.
-
-CI cannot confirm runtime pairing, Wi-Fi recovery or OEM-specific permission behavior. Test on an actual Android device before stable release.
+Keep changes in experimental PR #1 until reviewed. Existing workflows provide
+test/lint, signed experimental and stable APKs, updater version guard and
+Dependabot. CI cannot verify OEM-specific behavior or third-party Shizuku
+client compatibility on physical devices.
