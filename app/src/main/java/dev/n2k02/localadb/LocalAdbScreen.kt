@@ -81,7 +81,7 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 NavigationBarItem(
                     selected = page == Page.HOME,
-                    onClick = { page = Page.HOME },
+                    onClick = { page = Navigation.selectTab(page, Page.HOME) },
                     icon = { Icon(Icons.Rounded.Home, contentDescription = null) },
                     label = { Text("Home") })
                 NavigationBarItem(
@@ -91,12 +91,12 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
                     label = { Text("Apps") })
                 NavigationBarItem(
                     selected = page == Page.ADB,
-                    onClick = { page = Page.ADB },
+                    onClick = { page = Navigation.selectTab(page, Page.ADB) },
                     icon = { Icon(Icons.Rounded.Terminal, contentDescription = "ADB shell") },
                     label = { Text("Adb") })
                 NavigationBarItem(
                     selected = page in listOf(Page.SETTINGS, Page.ADB_CONNECTION, Page.UPDATES),
-                    onClick = { page = Page.SETTINGS },
+                    onClick = { page = Navigation.selectTab(page, Page.SETTINGS) },
                     icon = {
                         N2K02UpdateBadgedIcon(updates) {
                             Icon(Icons.Rounded.Settings, contentDescription = "Settings")
