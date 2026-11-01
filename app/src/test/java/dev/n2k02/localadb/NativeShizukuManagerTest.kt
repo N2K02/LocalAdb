@@ -25,7 +25,7 @@ class NativeShizukuManagerTest {
             "src/main/java/dev/n2k02/localadb/ShizukuPayloadProvider.kt"
         ).readText()
         assertTrue(file.contains("Binder.getCallingUid() != Process.SHELL_UID"))
-        assertTrue(file.contains("uri.pathSegments.size != 1"))
+        assertTrue(file.contains("uri.pathSegments.singleOrNull()"))
         assertTrue(file.contains("embedded-shizuku-server.apk"))
         val launcher = java.io.File(
             "src/main/java/dev/n2k02/localadb/NativeShizukuManager.kt"
@@ -35,7 +35,6 @@ class NativeShizukuManagerTest {
         assertTrue(launcher.contains("SERVER_SHA256"))
         assertTrue(launcher.contains("libshizuku.so"))
         assertTrue(launcher.contains("--apk="))
-        assertTrue(launcher.contains("Shizuku.pingBinder()"))
         assertTrue(launcher.contains("Shizuku.pingBinder()"))
     }
 

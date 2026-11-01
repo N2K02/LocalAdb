@@ -33,11 +33,16 @@ After LocalAdb verifies a live shell UID 2000 it:
 1. Starts the native Shizuku manager **automatically and independently of
    Android permission bootstrap**, even if an optional grant is unavailable.
 2. Verifies LocalAdb owns the globally named Shizuku manager permission.
-3. Streams the bundled Apache-2.0 Shizuku-Next payload to the verified shell
-   using a UID-2000-restricted ContentProvider.
+3. Exposes the checksum-verified bundled Shizuku-Next APK through a
+   **read-only seekable file descriptor** from a UID-2000-restricted
+   ContentProvider, avoiding a long-lived streaming pipe that could stall
+   shell extraction. Only the same verified shell may read the payload.
 4. Checks the exact SHA-256 on the device, extracts Shizuku-Next's own
-   **native starter** from that verified APK for the device ABI, and launches
-   it to handle process detachment, hidden APIs and startup diagnostics.
+   **native starter** from that verified APK for the device ABI, then runs
+   the starter **as a foreground ADB shell command**. As in Shizuku-Next,
+   the native starter forks and detaches the Java server itself. LocalAdb
+   confirms the starter's exit status instead of adding another background
+   shell job and swallowing startup errors.
 5. Waits for a **verified live Binder under UID 2000**; a successful shell
    command by itself never counts as Shizuku readiness.
 6. Uses server permission flags for Shizuku grant/revoke and explicit approval
@@ -51,7 +56,10 @@ The verified ADB watchdog checks Shizuku health too, with a minimum 90-second
 retry interval to avoid reconnect loops.
 
 When server startup fails, the Apps page exposes **Show server diagnostics**
-with bounded excerpts from the native starter output and Shizuku server phases. The same failure is
+with bounded excerpts from the native starter output, staged APK metadata and
+Shizuku server phases. During the Binder wait, progress is updated every
+five seconds and the operation ends with a visible failure after 60 seconds.
+The same failure is
 also reported under the Android logcat tag `LocalAdbShizuku`, which can be
 inspected with the connected Android logger. A missing Binder can still reflect
 Android/OEM restrictions or incompatibility; these changes improve startup

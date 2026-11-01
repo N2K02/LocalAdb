@@ -77,10 +77,31 @@ class ShizukuLifecycleTest {
         val provider = java.io.File(
             "src/main/java/dev/n2k02/localadb/ShizukuPayloadProvider.kt").readText()
         assertTrue(provider.contains("Binder.getCallingUid() != Process.SHELL_UID"))
-        assertTrue(provider.contains("uri.lastPathSegment == \"starter\""))
+        assertTrue(provider.contains("which != \"embedded\" && which != \"starter\""))
         assertTrue(provider.contains("ZipInputStream"))
         assertTrue(provider.contains("Build.SUPPORTED_ABIS.firstOrNull()"))
         assertTrue(provider.contains("libshizuku.so"))
+    }
+
+    @Test fun upstreamStarterMustNotBeBackgroundedTwice() {
+        val s = java.io.File(
+            "src/main/java/dev/n2k02/localadb/NativeShizukuManager.kt").readText()
+        assertTrue(s.contains("localadb_starter_exit:"))
+        assertTrue(s.contains("localadb_starter_exit:0"))
+        assertTrue(s.contains("val startupOutput = AdbTransport.exec(command, 20_000)"))
+        assertTrue(s.contains("Waiting for Shizuku Binder ("))
+        assertFalse(s.contains("echo \\$! > " + "dir + \"/starter.pid\""))
+    }
+
+    @Test fun providerDeliversVerifiedSeekableDescriptorNotBlockingPipe() {
+        val source = java.io.File(
+            "src/main/java/dev/n2k02/localadb/ShizukuPayloadProvider.kt").readText()
+        assertTrue(source.contains("ParcelFileDescriptor.open(target, ParcelFileDescriptor.MODE_READ_ONLY)"))
+        assertTrue(source.contains("EMBEDDED_SHA256"))
+        assertTrue(source.contains("digest.digest()"))
+        assertTrue(source.contains("target.isFile"))
+        assertTrue(source.contains("output.fd.sync()"))
+        assertFalse(source.contains("ParcelFileDescriptor.createPipe()"))
     }
 
     @Test fun manualStopDoesNotKillOtherShizukuManagerProcess() {

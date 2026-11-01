@@ -258,7 +258,6 @@ internal object NativeShizukuManager {
         lastAttemptMs = SystemClock.elapsedRealtime()
         val dir = serverDirectory(app)
         val file = dir + "/base.apk"
-        var launched = false
         try {
             ensureValidOwnership(app)
             refresh(app)
@@ -277,7 +276,7 @@ internal object NativeShizukuManager {
             val extraction = "mkdir -p " + dir + " && chmod 700 " + dir + " && " +
                 "content read --uri " + uri + " > " + file + " && chmod 600 " + file +
                 " && sha256sum " + file
-            val digestResult = AdbTransport.exec(extraction, 120_000).getOrThrow()
+            val digestResult = AdbTransport.exec(extraction, 55_000).getOrThrow()
             check(digestResult.lines().any { it.trim().startsWith(SERVER_SHA256 + " ") }) {
                 "Shizuku payload checksum mismatch or extraction failed"
             }
@@ -297,15 +296,27 @@ internal object NativeShizukuManager {
                 "Could not extract native Shizuku starter: " + ready.takeLast(180)
             }
 
-            state.update { it.copy(message = "Starting native Shizuku-Next under UID 2000…") }
-            Log.i(TAG, "Server SHA-256 verified; launching upstream native starter")
+            state.update { it.copy(message = "Launching Shizuku-Next native starter…") }
+            Log.i(TAG, "Server digest verified; running native starter as a foreground shell command")
+            // Shizuku-Next itself runs libshizuku.so as a shell command and
+            // waits for that command to exit. Its NATIVE starter forks the
+            // detached Java server. Backgrounding the starter a second time
+            // hid its exit status and could leave our persistent shell waiting.
             val command = "LD_LIBRARY_PATH=" + dir + " " + starter +
-                " --apk=" + file + " > " + dir + "/server.log 2>&1 < /dev/null & " +
-                "echo \$! > " + dir + "/starter.pid"
-            AdbTransport.exec(command, 10_000).getOrThrow()
-            launched = true
+                " --apk=" + file + " > " + dir + "/server.log 2>&1 < /dev/null; " +
+                "localadb_rc=\$?; echo localadb_starter_exit:\$localadb_rc; " +
+                "tail -n 20 " + dir + "/server.log 2>/dev/null"
+            val startupOutput = AdbTransport.exec(command, 20_000).getOrThrow()
+            Log.i(TAG, "Native starter returned: " + startupOutput.takeLast(1400))
+            check(startupOutput.lines().any {
+                it.trim() == "localadb_starter_exit:0"
+            }) {
+                "Native Shizuku starter failed: " + startupOutput.takeLast(1100)
+            }
 
-            val deadline = SystemClock.elapsedRealtime() + 60_000
+            val beganWaiting = SystemClock.elapsedRealtime()
+            val deadline = beganWaiting + 60_000
+            var lastReport = -1
             while (SystemClock.elapsedRealtime() < deadline) {
                 if (binderReady(app)) {
                     state.value = Status(serviceReady = true, shellUid = Process.SHELL_UID,
@@ -313,15 +324,23 @@ internal object NativeShizukuManager {
                     Log.i(TAG, "Native Shizuku Binder connected as UID 2000")
                     return
                 }
+                val seconds = ((SystemClock.elapsedRealtime() - beganWaiting) / 1000).toInt()
+                if (seconds / 5 != lastReport) {
+                    lastReport = seconds / 5
+                    state.update { current ->
+                        current.copy(message = "Waiting for Shizuku Binder (" +
+                            seconds + "s / 60s)…")
+                    }
+                }
                 delay(650)
             }
-            error("Shizuku server did not deliver a working manager Binder")
+            error("Shizuku server did not deliver a working manager Binder after 60s")
         } catch (cancelled: CancellationException) {
             state.update { it.copy(starting = false,
                 message = "Shizuku start was interrupted") }
             throw cancelled
         } catch (failure: Exception) {
-            val detail = if (launched && AdbEngine.status.value.connected &&
+            val detail = if (AdbEngine.status.value.connected &&
                 AdbTransport.isConnected) readFailureDiagnostics(dir, app.packageName) else ""
             val message = (failure.localizedMessage ?: "Shizuku startup failed").take(240)
             Log.e(TAG, "Shizuku startup failed: " + message)
@@ -338,10 +357,14 @@ internal object NativeShizukuManager {
         return AdbTransport.exec(
             "echo '--- Shizuku server output ---'; tail -n 30 " +
                 dir + "/server.log 2>/dev/null; " +
-                "echo '--- native starter PID ---'; cat " + dir + "/starter.pid 2>/dev/null; " +
+                "echo '--- startup metadata ---'; ls -lh " + dir +
+                "/base.apk " + dir + "/libshizuku.so 2>/dev/null; " +
                 "echo '--- server phases ---'; tail -n 30 " +
                 "/storage/emulated/0/Android/media/" +
-                packageName + "/starter.log 2>/dev/null",
+                packageName + "/starter.log 2>/dev/null; " +
+                "echo '--- app data starter phases ---'; tail -n 20 " +
+                "/storage/emulated/0/Android/data/" + packageName +
+                "/files/starter.log 2>/dev/null",
             5_000
         ).getOrNull().orEmpty().takeLast(5000).trim()
     }
