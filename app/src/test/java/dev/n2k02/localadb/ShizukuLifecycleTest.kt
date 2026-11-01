@@ -77,7 +77,7 @@ class ShizukuLifecycleTest {
         val provider = java.io.File(
             "src/main/java/dev/n2k02/localadb/ShizukuPayloadProvider.kt").readText()
         assertTrue(provider.contains("Binder.getCallingUid() != Process.SHELL_UID"))
-        assertTrue(provider.contains("which != \"embedded\" && which != \"starter\""))
+        assertTrue(provider.contains("setOf(\"embedded\", \"starter\", \"rish\")"))
         assertTrue(provider.contains("ZipInputStream"))
         assertTrue(provider.contains("Build.SUPPORTED_ABIS.firstOrNull()"))
         assertTrue(provider.contains("libshizuku.so"))

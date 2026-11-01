@@ -3,6 +3,7 @@ package dev.n2k02.localadb
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
@@ -296,6 +297,25 @@ internal object NativeShizukuManager {
                 "Could not extract native Shizuku starter: " + ready.takeLast(180)
             }
 
+            // The server's Java RishConfig.init() calls System.load() on
+            // <dirname(base.apk)>/lib/<native ABI>/librish.so. The native
+            // starter only launches the server; it does NOT copy this library.
+            val native = ShizukuNativeLibraries.select(Build.SUPPORTED_ABIS.toList())
+            val rishDir = dir + "/lib/" + native.serverAbi
+            val rishFile = native.shellRishPath(dir)
+            val rishUri = "content://" + app.packageName + ".embedded-shizuku/rish"
+            state.update { it.copy(message = "Installing Shizuku Rish JNI library…") }
+            val installRish = "mkdir -p " + rishDir + " && chmod 755 " + rishDir +
+                " && content read --uri " + rishUri + " > " + rishFile +
+                " && chmod 644 " + rishFile + " && test -s " + rishFile +
+                " && echo localadb_rish_ready"
+            val rishResult = AdbTransport.exec(installRish, 30_000).getOrThrow()
+            check(rishResult.lines().any { it.trim() == "localadb_rish_ready" }) {
+                "Could not install required Shizuku JNI library " + rishFile +
+                    ": " + rishResult.takeLast(240)
+            }
+            Log.i(TAG, "Native Rish dependency ready at " + rishFile)
+
             state.update { it.copy(message = "Launching Shizuku-Next native starter…") }
             Log.i(TAG, "Server digest verified; running native starter as a foreground shell command")
             // Shizuku-Next itself runs libshizuku.so as a shell command and
@@ -312,6 +332,11 @@ internal object NativeShizukuManager {
                 it.trim() == "localadb_starter_exit:0"
             }) {
                 "Native Shizuku starter failed: " + startupOutput.takeLast(1100)
+            }
+            // The upstream starter may exit 0 even when its forked server
+            // immediately dies (as on Android 17 when librish.so was missing).
+            check(!startupOutput.contains("server was killed by signal", ignoreCase = true)) {
+                "Shizuku child process crashed: " + startupOutput.takeLast(1100)
             }
 
             val beganWaiting = SystemClock.elapsedRealtime()
@@ -358,7 +383,8 @@ internal object NativeShizukuManager {
             "echo '--- Shizuku server output ---'; tail -n 30 " +
                 dir + "/server.log 2>/dev/null; " +
                 "echo '--- startup metadata ---'; ls -lh " + dir +
-                "/base.apk " + dir + "/libshizuku.so 2>/dev/null; " +
+                "/base.apk " + dir + "/libshizuku.so " +
+                dir + "/lib/*/librish.so 2>/dev/null; " +
                 "echo '--- server phases ---'; tail -n 30 " +
                 "/storage/emulated/0/Android/media/" +
                 packageName + "/starter.log 2>/dev/null; " +

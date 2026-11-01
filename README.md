@@ -43,10 +43,23 @@ After LocalAdb verifies a live shell UID 2000 it:
    the native starter forks and detaches the Java server itself. LocalAdb
    confirms the starter's exit status instead of adding another background
    shell job and swallowing startup errors.
-5. Waits for a **verified live Binder under UID 2000**; a successful shell
+5. Selects the matching native ABI and extracts **librish.so** from the
+   checksum-verified APK into `lib/<native ABI>/librish.so` beside `base.apk`.
+   Shizuku-Next's Java server loads this JNI library during construction;
+   without it, the native starter can return success but the server dies
+   before the Binder handshake.
+6. Waits for a **verified live Binder under UID 2000**; a successful shell
    command by itself never counts as Shizuku readiness.
-6. Uses server permission flags for Shizuku grant/revoke and explicit approval
+7. Uses server permission flags for Shizuku grant/revoke and explicit approval
    requests from compatible apps. Never claims a grant without readback.
+
+**Native dependency preflight:** the pinned Shizuku-Next APK must contain
+both `libshizuku.so` and `librish.so` for every supported ABI it ships. CI
+checks the JNI entries and ELF magic bytes before building. LocalAdb installs
+the required arm64 library as
+`/data/local/tmp/dev.n2k02.localadb-shizuku/lib/arm64/librish.so`
+before launching the native starter, and reports an error immediately if
+the copy fails or if the server process exits during starter execution.
 
 In **Apps → Shizuku manager**, **Stop server** attempts to shut down only this
 LocalAdb-owned server; it persists a manual-stop choice so the ADB watchdog

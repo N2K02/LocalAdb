@@ -2,6 +2,7 @@ package dev.n2k02.localadb
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
@@ -17,134 +18,131 @@ import java.security.MessageDigest
 import java.util.zip.ZipInputStream
 
 /**
- * The embedded server is exposed to the VERIFIED shell UID only.
+ * Checksum-pinned Shizuku-Next server APK, native starter and Rish JNI library
+ * are accessible through verified, seekable, read-only FDs to ADB UID 2000 only.
  *
- * Do not stream an ~35 MB APK through a ParcelFileDescriptor pipe: if the
- * content(1) reader stalls or closes its end, the pipe writer can block while
- * the caller's ADB shell is still waiting for EOF. Instead materialize a
- * checksum-verified private file and return a read-only seekable FD. Android
- * transfers the FD to the shell; the shell cannot browse the private cache.
+ * The native starter may succeed while the server crashes if librish.so is not
+ * installed under the native starter's -Dshizuku.library.path directory.
  */
 class ShizukuPayloadProvider : ContentProvider() {
     private companion object {
         const val TAG = "LocalAdbShizuku"
-        const val EMBEDDED_ASSET = "embedded-shizuku-server.apk"
-        const val EMBEDDED_SHA256 =
+        const val ASSET = "embedded-shizuku-server.apk"
+        const val EXPECTED_SHA256 =
             "f75b8b74727d281f3d7fd242298f676bfb4ee81d2feb5298aa719b05284fa149"
-        const val MAX_STARTER_BYTES = 16L * 1024 * 1024
-        private val prepareLock = Any()
-        private var preparedForProcess = false
-        private var preparedStarter = false
-
-        fun sha256(data: ByteArray): String =
-            data.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        const val MAX_NATIVE_BYTES = 16L * 1024 * 1024
+        val prepareLock = Any()
+        var preparedApk = false
+        val preparedNative = mutableSetOf<String>()
     }
 
     override fun onCreate(): Boolean = true
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
-        // The provider's manifest readPermission is defense in depth; enforce
-        // the real Binder caller UID even if Android permission rules change.
         if (Binder.getCallingUid() != Process.SHELL_UID) {
-            throw SecurityException("Only ADB shell UID 2000 may read Shizuku payload")
+            throw SecurityException("Only ADB shell UID 2000 can read Shizuku payloads")
         }
-        val which = uri.pathSegments.singleOrNull()
-        if (mode != "r" || (which != "embedded" && which != "starter")) {
-            throw FileNotFoundException("Unsupported embedded payload request")
+        val requested = uri.pathSegments.singleOrNull()
+            ?: throw FileNotFoundException("Missing Shizuku payload name")
+        if (mode != "r" || requested !in setOf("embedded", "starter", "rish")) {
+            throw FileNotFoundException("Unsupported Shizuku payload request")
         }
         val app = context ?: throw FileNotFoundException("LocalAdb is unavailable")
-        val target = File(app.cacheDir,
-            if (which == "embedded") "localadb-embedded-shizuku.apk"
-            else "localadb-embedded-shizuku-starter.so")
         val started = SystemClock.elapsedRealtime()
         try {
+            val apkFile = File(app.cacheDir, "localadb-embedded-shizuku.apk")
+            val target = if (requested == "embedded") apkFile
+                else File(app.cacheDir, "localadb-embedded-shizuku-" + requested + ".so")
             synchronized(prepareLock) {
-                when (which) {
-                    "embedded" -> if (!preparedForProcess || !target.isFile) {
-                        writeBundledApk(app, target)
-                        preparedForProcess = true
+                // All JNI files come from the *same* checksum-verified APK.
+                if (!preparedApk || !apkFile.isFile) {
+                    writeVerifiedApk(app, apkFile)
+                    preparedApk = true
+                }
+                if (requested != "embedded" &&
+                    (requested !in preparedNative || !target.isFile)) {
+                    val libraries = ShizukuNativeLibraries.select(Build.SUPPORTED_ABIS.toList())
+                    val entryName = when (requested) {
+                        "starter" -> libraries.starterEntry
+                        "rish" -> libraries.rishEntry
+                        else -> error("Unsupported native payload")
                     }
-                    "starter" -> if (!preparedStarter || !target.isFile) {
-                        writeStarter(app, target)
-                        preparedStarter = true
-                    }
+                    extractNative(apkFile, entryName, target)
+                    preparedNative.add(requested)
                 }
             }
-            Log.i(TAG, "Prepared $which payload FD (" + target.length() +
-                " bytes, " + (SystemClock.elapsedRealtime() - started) + " ms)")
+            Log.i(TAG, "Prepared Shizuku " + requested + ": " + target.length() +
+                " bytes in " + (SystemClock.elapsedRealtime() - started) + " ms")
             return ParcelFileDescriptor.open(target, ParcelFileDescriptor.MODE_READ_ONLY)
         } catch (error: Exception) {
-            Log.e(TAG, "Could not prepare $which payload (" +
-                (SystemClock.elapsedRealtime() - started) + " ms)", error)
-            throw FileNotFoundException("LocalAdb could not prepare " + which +
-                " payload: " + (error.message ?: error.javaClass.simpleName).take(160))
+            Log.e(TAG, "Failed to prepare Shizuku " + requested + " payload", error)
+            throw FileNotFoundException(
+                "Could not prepare " + requested + ": " +
+                    (error.message ?: error.javaClass.simpleName).take(200))
         }
     }
 
-    private fun writeBundledApk(app: android.content.Context, target: File) {
-        val temp = File.createTempFile("localadb-apk-", ".tmp", app.cacheDir)
+    private fun writeVerifiedApk(context: Context, target: File) {
+        val temp = File.createTempFile("localadb-apk-", ".tmp", context.cacheDir)
         try {
             val digest = MessageDigest.getInstance("SHA-256")
-            app.assets.open(EMBEDDED_ASSET).use { source ->
+            context.assets.open(ASSET).use { input ->
                 FileOutputStream(temp).use { output ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
-                        val n = source.read(buffer)
-                        if (n < 0) break
-                        if (n == 0) continue
-                        output.write(buffer, 0, n)
-                        digest.update(buffer, 0, n)
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (count == 0) continue
+                        output.write(buffer, 0, count)
+                        digest.update(buffer, 0, count)
                     }
                     output.fd.sync()
                 }
             }
-            val actual = sha256(digest.digest())
-            check(actual == EMBEDDED_SHA256) { "Embedded server SHA-256 mismatch" }
+            val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+            check(actual == EXPECTED_SHA256) { "Embedded Shizuku APK SHA-256 mismatch" }
             replaceAtomically(temp, target)
         } finally {
             temp.delete()
         }
     }
 
-    private fun writeStarter(app: android.content.Context, target: File) {
-        val preferred = "lib/" + Build.SUPPORTED_ABIS.firstOrNull().orEmpty() +
-            "/libshizuku.so"
-        val temp = File.createTempFile("localadb-starter-", ".tmp", app.cacheDir)
+    private fun extractNative(apk: File, entryName: String, target: File) {
+        val temp = File.createTempFile("localadb-jni-", ".tmp", target.parentFile)
         try {
-            var extracted = false
-            app.assets.open(EMBEDDED_ASSET).use { apk ->
-                ZipInputStream(apk).use { zip ->
-                    while (true) {
-                        val entry = zip.nextEntry ?: break
-                        if (entry.name != preferred) continue
-                        FileOutputStream(temp).use { output ->
-                            val buffer = ByteArray(64 * 1024)
-                            var total = 0L
-                            while (true) {
-                                val n = zip.read(buffer)
-                                if (n < 0) break
-                                if (n == 0) continue
-                                total += n
-                                check(total <= MAX_STARTER_BYTES) {
-                                    "Native starter exceeds expected size"
-                                }
-                                output.write(buffer, 0, n)
+            var found = false
+            ZipInputStream(apk.inputStream().buffered()).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (entry.name != entryName) continue
+                    FileOutputStream(temp).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val count = zip.read(buffer)
+                            if (count < 0) break
+                            if (count == 0) continue
+                            total += count
+                            check(total <= MAX_NATIVE_BYTES) {
+                                "JNI library too large: " + entryName
                             }
-                            output.fd.sync()
+                            output.write(buffer, 0, count)
                         }
-                        extracted = true
-                        break
+                        output.fd.sync()
                     }
+                    found = true
+                    break
                 }
             }
-            check(extracted && temp.length() >= 4) {
-                "No native Shizuku starter for " + Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
+            check(found && temp.length() >= 4) {
+                "Required native library missing from pinned APK: " + entryName
             }
-            temp.inputStream().use { file ->
+            temp.inputStream().use { input ->
                 val elf = ByteArray(4)
-                check(file.read(elf) == 4 && elf.contentEquals(
-                    byteArrayOf(0x7f, 0x45, 0x4c, 0x46)
-                )) { "Bundled starter is not an ELF executable" }
+                check(input.read(elf) == 4 &&
+                    elf.contentEquals(byteArrayOf(0x7f, 0x45, 0x4c, 0x46))) {
+                    "Bundled native library has invalid ELF header: " + entryName
+                }
             }
             replaceAtomically(temp, target)
         } finally {
@@ -152,11 +150,11 @@ class ShizukuPayloadProvider : ContentProvider() {
         }
     }
 
-    private fun replaceAtomically(temp: File, destination: File) {
-        check(temp.renameTo(destination)) { "Could not stage bundled server payload" }
+    private fun replaceAtomically(temp: File, target: File) {
+        check(temp.renameTo(target)) { "Could not stage Shizuku payload" }
     }
 
-    override fun getType(uri: Uri): String? = "application/octet-stream"
+    override fun getType(uri: Uri): String = "application/octet-stream"
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?,
         selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
