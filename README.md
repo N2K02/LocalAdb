@@ -28,9 +28,11 @@ On-device Android ADB client using N2K02 theme and updater and the same verified
 
 ## Shizuku and app permissions
 
-The Apps page draws on Shizuku-Next (https://github.com/rushiranpise/Shizuku-Next, Apache-2.0) to discover apps declaring Shizuku API support or Android developer permissions, filter and display them. Only individually chosen, declared Android development permissions can be changed using a live verified shell, with Android readback confirmation.
+The Apps page draws on Shizuku-Next (https://github.com/rushiranpise/Shizuku-Next, Apache-2.0). It scans installed packages for the declared Shizuku API permission (with V3 metadata detection and legacy-client labeling), displays icons/names/packages, and offers search plus User/System/Disabled/Hidden and independent Shizuku/Android-grant filters. Scan errors are shown instead of being mistaken for an empty list.
 
-Shizuku API access is different from Android pm grant. Shizuku-Next checks the installed MANAGER UID for changes to its authorization flags. LocalAdb cannot directly grant Shizuku API access simply because it has ADB shell UID 2000. The UI opens the installed Shizuku manager instead and never claims that an unchecked Shizuku grant succeeded. LocalAdb does not impersonate or replace Shizuku.
+Android development permissions are listed only when the target app requests them. A switch is enabled only when Android's permission definition carries the development protection flag and the permission is on LocalAdb's explicit allowlist. Every grant/revoke needs a confirmation dialog, is limited to the current Android user, rechecks a live ADB shell UID 2000, and verifies the result via PackageManager readback. Failed or unavailable grants never appear successful. No bulk permission grants to other apps occur.
+
+Shizuku API access is different from Android pm grant. Shizuku-Next checks the installed MANAGER UID for changes to its authorization flags. LocalAdb cannot directly grant Shizuku API access simply because it has ADB shell UID 2000. The UI opens the installed Shizuku manager instead, shows Shizuku authorization as externally managed/unknown, and never claims that an unchecked Shizuku grant succeeded. If no manager is installed, an explicit link opens the Shizuku-Next project. LocalAdb does not impersonate or replace Shizuku.
 
 The sideloaded app manager needs Android package visibility and declares QUERY_ALL_PACKAGES; this permission is restricted on Google Play.
 

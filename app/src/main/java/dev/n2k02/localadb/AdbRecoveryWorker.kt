@@ -11,8 +11,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.WorkManager
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
 
 /** WorkManager persists a low-frequency recovery opportunity across process death. */
@@ -26,18 +24,7 @@ class AdbRecoveryWorker(context: Context, params: WorkerParameters): CoroutineWo
             delay(3_000)
             AdbEngine.restoreAfterReboot(app)
         }
-        // Start-on-boot works independently of the watchdog switch.
-        if (inputData.getBoolean("boot", false) ||
-            AdbSettings.get(app, AdbSettings.Option.WATCHDOG)) {
-            AdbEngine.start(app)
-            // Keep the worker alive until its asynchronous connection attempt has settled.
-            withTimeoutOrNull(25_000L) {
-                AdbEngine.status.first {
-                    it.connected || it.phase == Phase.NEEDS_HELP ||
-                        (it.phase == Phase.SEARCHING && it.scanning)
-                }
-            }
-        }
+        if (AdbSettings.get(app, AdbSettings.Option.WATCHDOG)) AdbEngine.start(app)
         return Result.success()
     }
 

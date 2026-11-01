@@ -8,7 +8,6 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.os.SystemClock
 import android.provider.Settings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -54,44 +53,32 @@ internal object AdbEngine {
     private var tlsDiscovery: NsdManager.DiscoveryListener? = null
     private var generation = 0
     private var pairingAttempt = false
-    private val recoveryBackoff = AdbRecoveryBackoff()
 
     fun start(context: Context, explicit: Boolean = false) {
         val app = context.applicationContext
         if (explicit) AdbSettings.setStopped(app, false)
         if (AdbSettings.stopped(app)) return
         if (active) {
-            if (explicit) retry(app, manual = true)
+            if (explicit) retry(app)
             return
         }
         active = true
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         AdbRecoveryWorker.schedule(app)
-        if (AdbSettings.get(app, AdbSettings.Option.WATCHDOG)) startWatchdog(app)
-        retry(app, manual = explicit)
+        startWatchdog(app)
+        retry(app)
     }
 
-    fun retry(context: Context, manual: Boolean = true) {
+    fun retry(context: Context) {
         val app = context.applicationContext
         if (!active || AdbSettings.stopped(app)) return
-        if (!manual && (pairingAttempt || status.value.scanning)) return
-        if (!manual && !recoveryBackoff.allowed(SystemClock.elapsedRealtime())) return
         scope.launch {
             connectionMutex.withLock {
-                if (!active || AdbSettings.stopped(app)) return@withLock
-                // Re-use a live authenticated connection without cycling adbd.
-                if (status.value.connected && AdbTransport.isConnected && verifyShell()) {
-                    AdbPermissionBootstrap.configure(app)
-                    return@withLock
-                }
-                status.update { it.copy(phase = Phase.CONNECTING, shellUid = null,
-                    tcpConnected = false, message = "Checking authorized localhost ADB…") }
+                if (!active) return@withLock
+                status.update { it.copy(phase = Phase.CONNECTING, message = "Checking authorized localhost ADB…") }
                 if (connectTcp(app)) return@withLock
                 val port = AdbSettings.tlsPort(app)
                 if (port != null && connectTls(app, port)) return@withLock
-                if (!manual) {
-                    recoveryBackoff.onFailure(SystemClock.elapsedRealtime())
-                }
                 startDiscovery(app)
             }
         }
@@ -142,15 +129,19 @@ internal object AdbEngine {
     }
 
     private suspend fun onVerified(context: Context, tcp: Boolean) {
-        if (!active || AdbSettings.stopped(context) || !AdbTransport.isConnected || !verifyShell()) return
-        recoveryBackoff.onSuccess()
         AdbSettings.rememberVerified(context)
         status.update { it.copy(phase = Phase.CONNECTED, shellUid = 2000, tcpConnected = tcp,
-            message = if (tcp) "Verified shell UID 2000 · TCP/5555 connected"
-                      else "Verified shell UID 2000 · Wireless TLS connected") }
+            message = if (tcp) "Authorized Android shell (UID 2000), localhost TCP/5555."
+                      else "Authorized Android shell (UID 2000), Wireless debugging TLS.") }
         stopDiscovery()
-        // VRec-style automatic grant of this app's eligible permissions; each is read back.
-        AdbPermissionBootstrap.configure(context)
+        if (AdbSettings.get(context, AdbSettings.Option.RESTORE_AFTER_RESTART)) {
+            // This is opt-in, and is attempted only after verifying our own shell.
+            val safePackage = context.packageName.takeIf { it.matches(Regex("[A-Za-z0-9_.]+")) } ?: return
+            if (context.checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS") !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                AdbTransport.exec("pm grant $safePackage android.permission.WRITE_SECURE_SETTINGS")
+            }
+        }
     }
 
     fun submitPairingCode(context: Context, code: String) {
@@ -224,7 +215,6 @@ internal object AdbEngine {
         pairingDiscovery = listen(mgr, "_adb-tls-pairing._tcp.", current) { port ->
             status.update { it.copy(pairingPort = port,
                 message = "Pairing service found. Enter the six-digit code, or enable auto-detect in Accessibility.") }
-            AdbPairingAccessibilityService.onPairingPortAvailable()
         }
         tlsDiscovery = listen(mgr, "_adb-tls-connect._tcp.", current) { port ->
             status.update { it.copy(tlsPort = port) }
@@ -300,11 +290,9 @@ internal object AdbEngine {
                 delay(45_000L)
                 if (!AdbSettings.get(context, AdbSettings.Option.WATCHDOG)) continue
                 if (status.value.connected && AdbTransport.isConnected && verifyShell()) continue
-                if (status.value.scanning || pairingAttempt) continue
-                if (!recoveryBackoff.allowed(SystemClock.elapsedRealtime())) continue
                 status.update { it.copy(phase = Phase.IDLE, shellUid = null, tcpConnected = false,
                     message = "ADB connection lost. Attempting authorized recovery…") }
-                retry(context, manual = false)
+                retry(context)
             }
         }
     }
@@ -312,11 +300,6 @@ internal object AdbEngine {
     fun preferencesChanged(context: Context) {
         val app = context.applicationContext
         AdbRecoveryWorker.schedule(app)
-        if (active && status.value.connected) scope.launch {
-            connectionMutex.withLock {
-                if (active && status.value.connected) AdbPermissionBootstrap.configure(app)
-            }
-        }
         if (!AdbSettings.get(app, AdbSettings.Option.WATCHDOG)) {
             watchdog?.cancel()
             watchdog = null
@@ -375,8 +358,6 @@ internal object AdbEngine {
             withTimeoutOrNull(2_000L) { AdbTransport.close() }
         }
         AdbRecoveryWorker.cancel(context)
-        AdbPermissionBootstrap.reset()
-        recoveryBackoff.onSuccess()
         status.value = AdbStatus(phase = Phase.STOPPED, message = "Stopped by Quit.")
     }
 }

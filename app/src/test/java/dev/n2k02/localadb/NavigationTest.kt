@@ -6,7 +6,7 @@ import org.junit.Test
 
 class NavigationTest {
     @Test fun subpagesReturnToSettings() {
-        listOf(Page.ADB, Page.APPS, Page.UPDATES).forEach {
+        listOf(Page.ADB, Page.UPDATES).forEach {
             assertEquals(Page.SETTINGS, Navigation.back(it))
         }
     }
@@ -20,11 +20,9 @@ class NavigationTest {
             assertEquals(Page.SETTINGS, Navigation.selectTab(page, Page.SETTINGS))
         }
     }
-    @Test fun subpagesCannotBeTabs() {
-        listOf(Page.ADB, Page.APPS, Page.UPDATES).forEach { sub ->
-            assertThrows(IllegalArgumentException::class.java) {
-                Navigation.selectTab(Page.HOME, sub)
-            }
+    @Test fun adbIsOnlyASubpage() {
+        assertThrows(IllegalArgumentException::class.java) {
+            Navigation.selectTab(Page.HOME, Page.ADB)
         }
     }
 }

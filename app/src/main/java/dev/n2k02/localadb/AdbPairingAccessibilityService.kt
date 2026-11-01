@@ -8,12 +8,6 @@ import android.view.accessibility.AccessibilityNodeInfo
 
 /** Optional and narrowly scoped: only read Android Settings' pairing-code dialog. */
 class AdbPairingAccessibilityService : AccessibilityService() {
-    companion object {
-        @Volatile private var current: AdbPairingAccessibilityService? = null
-        fun onPairingPortAvailable() {
-            current?.handler?.post { current?.schedulePairingDialogScan() }
-        }
-    }
     private val handler = Handler(Looper.getMainLooper())
     private var previousSignature: Int? = null
     private val reader = object : Runnable {
@@ -24,19 +18,6 @@ class AdbPairingAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        current = this
-        if (AdbEngine.status.value.pairingPort != null) schedulePairingDialogScan()
-    }
-
-    private fun schedulePairingDialogScan() {
-        if (!AdbSettings.get(this, AdbSettings.Option.AUTO_PAIR)) return
-        handler.removeCallbacks(reader)
-        reader.remaining = 14
-        reader.run()
-    }
-
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         if (!AdbSettings.get(this, AdbSettings.Option.AUTO_PAIR) ||
@@ -44,7 +25,9 @@ class AdbPairingAccessibilityService : AccessibilityService() {
             !PairingCodePolicy.isSystemSettings(event?.packageName?.toString())) return
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        schedulePairingDialogScan()
+        handler.removeCallbacks(reader)
+        reader.remaining = 12
+        reader.run()
     }
 
     private fun readCode(): Boolean {
@@ -77,7 +60,6 @@ class AdbPairingAccessibilityService : AccessibilityService() {
     }
     override fun onDestroy() {
         handler.removeCallbacks(reader)
-        if (current === this) current = null
         super.onDestroy()
     }
 }
