@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val state by AdbEngine.status.collectAsState()
-    val autoPair = AdbSettings.get(context, AdbSettings.Option.AUTO_PAIR)
+    var autoPair by remember { mutableStateOf(AdbSettings.get(context, AdbSettings.Option.AUTO_PAIR)) }
     val enabledServices = remember {
         runCatching {
             Settings.Secure.getString(context.contentResolver,
@@ -32,7 +32,8 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
                 Text("Pairing & recovery", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(6.dp))
                 ToggleLine(AdbSettings.Option.AUTO_PAIR, "Auto-detect pairing code",
-                    "Read the Android pairing dialog with Accessibility.")
+                    "Read the Android pairing dialog with Accessibility.",
+                    onChanged = { autoPair = it })
                 if (autoPair && !enabledServices.contains(AdbPairingAccessibilityService::class.java.name)) {
                     Text("Accessibility is needed for automatic pairing. Manual pairing is on Home.",
                         style = MaterialTheme.typography.bodySmall)
@@ -72,7 +73,8 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ToggleLine(option: AdbSettings.Option, title: String, description: String) {
+private fun ToggleLine(option: AdbSettings.Option, title: String, description: String,
+    onChanged: ((Boolean) -> Unit)? = null) {
     val context = LocalContext.current
     var checked by remember(option) { mutableStateOf(AdbSettings.get(context, option)) }
     Row(Modifier.fillMaxWidth().padding(vertical = 9.dp),
@@ -86,6 +88,7 @@ private fun ToggleLine(option: AdbSettings.Option, title: String, description: S
         Switch(checked = checked, onCheckedChange = {
             checked = it
             AdbSettings.set(context, option, it)
+            onChanged?.invoke(it)
             AdbEngine.preferencesChanged(context)
             if (option == AdbSettings.Option.TCP_5555 && !it) AdbEngine.disableTcp(context)
         })
