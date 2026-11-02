@@ -75,6 +75,14 @@ internal object AdbEngine {
         scope.launch {
             connectionMutex.withLock {
                 if (!active) return@withLock
+                // Avoid a needless disconnect when a verified session is
+                // already in the requested ADB mode.
+                val tcpWanted = AdbSettings.get(app, AdbSettings.Option.TCP_5555)
+                if (status.value.connected && AdbTransport.lastKnownConnected &&
+                    (!tcpWanted || status.value.tcpConnected) && verifyShell()) {
+                    NativeShizukuManager.maybeRecover(app)
+                    return@withLock
+                }
                 status.update { it.copy(phase = Phase.CONNECTING, message = "Checking authorized localhost ADB…") }
                 if (connectTcp(app)) return@withLock
                 val port = AdbSettings.tlsPort(app)
@@ -90,6 +98,8 @@ internal object AdbEngine {
     }
 
     private suspend fun connectTcp(context: Context): Boolean {
+        if (status.value.connected && status.value.tcpConnected &&
+            AdbTransport.lastKnownConnected && verifyShell()) return true
         // The port can be open without being an authorized Android shell.
         if (!isLocalPortListening()) return false
         AdbTransport.disconnect()
@@ -104,6 +114,8 @@ internal object AdbEngine {
 
     private suspend fun connectTls(context: Context, port: Int): Boolean {
         if (port !in 1..65535 || !active) return false
+        if (status.value.connected && AdbTransport.lastKnownConnected &&
+            verifyShell()) return true
         AdbTransport.disconnect()
         val connected = AdbTransport.connectLocalTls(context, port)
         if (connected.isFailure || !verifyShell()) {
