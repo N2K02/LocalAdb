@@ -34,7 +34,7 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
                 ToggleLine(AdbSettings.Option.AUTO_PAIR, "Auto-detect pairing code",
                     "Read the Android pairing dialog with Accessibility.",
                     onChanged = { autoPair = it })
-                if (autoPair && !enabledServices.contains(AdbPairingAccessibilityService::class.java.name)) {
+                if (autoPair && !enabledServices.contains("AdbPairingAccessibilityService", ignoreCase = true)) {
                     Text("Accessibility is needed for automatic pairing. Manual pairing is on Home.",
                         style = MaterialTheme.typography.bodySmall)
                     OutlinedButton(onClick = {
