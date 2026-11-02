@@ -29,16 +29,30 @@ class MainActivity : ComponentActivity() {
         if (quitting) return
         quitting = true
         lifecycleScope.launch {
-            // Quit is single-flight. Shut down Shizuku before releasing its ADB
-            // transport; never block the Activity main thread with runBlocking.
-            withContext(NonCancellable + Dispatchers.IO) {
-                AdbConsole.shutdown()
-                NativeShizukuManager.shutdown(applicationContext)
-                AdbEngine.shutdown(applicationContext)
-                LiveUpdater.shutdown()
-                appLog.shutdown()
+            // Keep Quit single-flight and off the main thread. One failing
+            // subsystem must not prevent the remaining cleanup or task removal.
+            try {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    try {
+                        AdbConsole.shutdown()
+                    } finally {
+                        try {
+                            NativeShizukuManager.shutdown(applicationContext)
+                        } finally {
+                            try {
+                                AdbEngine.shutdown(applicationContext)
+                            } finally {
+                                runCatching { LiveUpdater.shutdown() }
+                                runCatching { appLog.shutdown() }
+                            }
+                        }
+                    }
+                }
+            } finally {
+                withContext(NonCancellable + Dispatchers.Main.immediate) {
+                    finishAndRemoveTask()
+                }
             }
-            finishAndRemoveTask()
         }
     }
 }
