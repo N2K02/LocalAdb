@@ -28,6 +28,8 @@ import java.util.concurrent.TimeUnit
 private class JemAdbConnectionManager(context: Context) : AbsAdbConnectionManager() {
 
     private val identity = AdbIdentity.getOrCreate(context)
+    // ADB connections destroy their supplied key on close. Use a disposable copy.
+    private val sessionKey = AdbSessionKey.copyOf(identity.privateKey)
 
     init {
         setApi(Build.VERSION.SDK_INT)
@@ -37,7 +39,7 @@ private class JemAdbConnectionManager(context: Context) : AbsAdbConnectionManage
         setTimeout(10, TimeUnit.SECONDS)
     }
 
-    override fun getPrivateKey(): PrivateKey = identity.privateKey
+    override fun getPrivateKey(): PrivateKey = sessionKey
 
     override fun getCertificate(): Certificate = identity.certificate
 
@@ -219,7 +221,10 @@ object AdbTransport {
         val watchdog = launch {
             delay(timeoutMs)
             Log.w(TAG, "ADB shell command timed out")
-            session?.let { runCatching { it.close() } } ?: runCatching { mgr.close() }
+            runCatching { session?.close() }
+            runCatching { mgr.disconnect() }
+            if (manager === mgr) manager = null
+            lastKnownConnected = false
             shell = null
         }
         try {
@@ -372,8 +377,10 @@ object AdbTransport {
         }
 
         fun close() {
-            runCatching { out.close() }
+            // Close underlying stream first to release blocked readers.
             runCatching { if (!stream.isClosed) stream.close() }
+            runCatching { reader.close() }
+            runCatching { out.close() }
         }
 
         private companion object {
@@ -397,6 +404,7 @@ object AdbTransport {
                 runCatching { shell?.close() }
                 shell = null
                 runCatching { mgr.disconnect() }
+                if (manager === mgr) manager = null
                 lastKnownConnected = false
                 Unit
             }
@@ -416,25 +424,23 @@ object AdbTransport {
             runCatching { shell?.close() }
             shell = null
             runCatching { mgr.disconnect() }
+            if (manager === mgr) manager = null
             lastKnownConnected = false
             Unit
         }
     }
 
-    suspend fun disconnect() = withContext(Dispatchers.IO) {
-        runCatching { shell?.close() }
-        shell = null
-        runCatching { manager?.disconnect() }
-        Unit
-    }
+    /** Disconnect retires the transport and its disposable manager key. */
+    suspend fun disconnect() = close()
 
-    /** Drops the connection AND the in-memory manager, but never the identity
-     *  files - keep the stable ADB identity across app sessions. */
+    /** Use libadb disconnect() instead of close(), which prints a spurious
+     *  DestroyFailedException on non-destroyable private keys. */
     suspend fun close() = withContext(Dispatchers.IO) {
         runCatching { shell?.close() }
         shell = null
-        runCatching { manager?.close() }
+        val oldManager = manager
         manager = null
+        runCatching { oldManager?.disconnect() }
         lastKnownConnected = false
         Unit
     }

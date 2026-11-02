@@ -12,11 +12,11 @@ import android.provider.Settings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -75,6 +75,18 @@ internal object AdbEngine {
         scope.launch {
             connectionMutex.withLock {
                 if (!active) return@withLock
+                // A verified TLS session may still need promotion to TCP/5555.
+                // Do not claim success until the requested transport is verified.
+                val tcpWanted = AdbSettings.get(app, AdbSettings.Option.TCP_5555)
+                if (status.value.connected && AdbTransport.lastKnownConnected && verifyShell()) {
+                    if (tcpWanted && !status.value.tcpConnected) {
+                        val tlsPort = status.value.tlsPort ?: AdbSettings.tlsPort(app)
+                        if (tlsPort != null && connectTls(app, tlsPort)) return@withLock
+                    } else {
+                        NativeShizukuManager.maybeRecover(app)
+                        return@withLock
+                    }
+                }
                 status.update { it.copy(phase = Phase.CONNECTING, message = "Checking authorized localhost ADB…") }
                 if (connectTcp(app)) return@withLock
                 val port = AdbSettings.tlsPort(app)
@@ -90,6 +102,8 @@ internal object AdbEngine {
     }
 
     private suspend fun connectTcp(context: Context): Boolean {
+        if (status.value.connected && status.value.tcpConnected &&
+            AdbTransport.lastKnownConnected && verifyShell()) return true
         // The port can be open without being an authorized Android shell.
         if (!isLocalPortListening()) return false
         AdbTransport.disconnect()
@@ -104,14 +118,21 @@ internal object AdbEngine {
 
     private suspend fun connectTls(context: Context, port: Int): Boolean {
         if (port !in 1..65535 || !active) return false
-        AdbTransport.disconnect()
-        val connected = AdbTransport.connectLocalTls(context, port)
-        if (connected.isFailure || !verifyShell()) {
+        val tcpWanted = AdbSettings.get(context, AdbSettings.Option.TCP_5555)
+        val verifiedExisting = status.value.connected && AdbTransport.lastKnownConnected &&
+            verifyShell()
+        if (verifiedExisting && (status.value.tcpConnected || !tcpWanted)) return true
+        // Promote a healthy TLS session in place; reconnect only if it is stale.
+        if (!verifiedExisting || status.value.tcpConnected) {
             AdbTransport.disconnect()
-            return false
+            val connected = AdbTransport.connectLocalTls(context, port)
+            if (connected.isFailure || !verifyShell()) {
+                AdbTransport.disconnect()
+                return false
+            }
         }
         AdbSettings.rememberVerified(context, tlsPort = port)
-        if (AdbSettings.get(context, AdbSettings.Option.TCP_5555)) {
+        if (tcpWanted) {
             status.update { it.copy(phase = Phase.CONNECTING, message = "Switching authorized shell to TCP/5555…") }
             val switched = AdbTransport.switchToTcpip()
             if (switched.isSuccess) {
@@ -355,18 +376,21 @@ internal object AdbEngine {
         return decision
     }
 
-    fun shutdown(context: Context) {
-        AdbSettings.setStopped(context, true)
+    /** Await socket cleanup; callers must not remove the Activity until done. */
+    suspend fun shutdown(context: Context) {
+        val app = context.applicationContext
+        AdbSettings.setStopped(app, true)
         active = false
         watchdog?.cancel()
         watchdog = null
         stopDiscovery()
         scope.cancel()
-        // Quit must close the socket and shell before the Activity is removed.
-        runBlocking(Dispatchers.IO) {
-            withTimeoutOrNull(2_000L) { AdbTransport.close() }
+        AdbRecoveryWorker.cancel(app)
+        // Complete cleanup even if the UI scope is cancelled during Quit.
+        // Keep blocking transport I/O off the main thread.
+        withContext(NonCancellable + Dispatchers.IO) {
+            AdbTransport.close()
         }
-        AdbRecoveryWorker.cancel(context)
         status.value = AdbStatus(phase = Phase.STOPPED, message = "Stopped by Quit.")
     }
 }
