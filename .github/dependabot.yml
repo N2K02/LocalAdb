@@ -22,8 +22,6 @@ updates:
     directory: "/"
     registries:
       - n2k02-updater
-    allow:
-      - dependency-name: "dev.n2k02:updater"
     multi-ecosystem-group: all-dependencies
     patterns: ["*"]
 
