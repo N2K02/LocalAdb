@@ -75,13 +75,17 @@ internal object AdbEngine {
         scope.launch {
             connectionMutex.withLock {
                 if (!active) return@withLock
-                // Avoid a needless disconnect when a verified session is
-                // already in the requested ADB mode.
+                // A verified TLS session may still need promotion to TCP/5555.
+                // Do not claim success until the requested transport is verified.
                 val tcpWanted = AdbSettings.get(app, AdbSettings.Option.TCP_5555)
-                if (status.value.connected && AdbTransport.lastKnownConnected &&
-                    (!tcpWanted || status.value.tcpConnected) && verifyShell()) {
-                    NativeShizukuManager.maybeRecover(app)
-                    return@withLock
+                if (status.value.connected && AdbTransport.lastKnownConnected && verifyShell()) {
+                    if (tcpWanted && !status.value.tcpConnected) {
+                        val tlsPort = status.value.tlsPort ?: AdbSettings.tlsPort(app)
+                        if (tlsPort != null && connectTls(app, tlsPort)) return@withLock
+                    } else {
+                        NativeShizukuManager.maybeRecover(app)
+                        return@withLock
+                    }
                 }
                 status.update { it.copy(phase = Phase.CONNECTING, message = "Checking authorized localhost ADB…") }
                 if (connectTcp(app)) return@withLock
@@ -114,16 +118,21 @@ internal object AdbEngine {
 
     private suspend fun connectTls(context: Context, port: Int): Boolean {
         if (port !in 1..65535 || !active) return false
-        if (status.value.connected && AdbTransport.lastKnownConnected &&
-            verifyShell()) return true
-        AdbTransport.disconnect()
-        val connected = AdbTransport.connectLocalTls(context, port)
-        if (connected.isFailure || !verifyShell()) {
+        val tcpWanted = AdbSettings.get(context, AdbSettings.Option.TCP_5555)
+        val verifiedExisting = status.value.connected && AdbTransport.lastKnownConnected &&
+            verifyShell()
+        if (verifiedExisting && (status.value.tcpConnected || !tcpWanted)) return true
+        // Promote a healthy TLS session in place; reconnect only if it is stale.
+        if (!verifiedExisting || status.value.tcpConnected) {
             AdbTransport.disconnect()
-            return false
+            val connected = AdbTransport.connectLocalTls(context, port)
+            if (connected.isFailure || !verifyShell()) {
+                AdbTransport.disconnect()
+                return false
+            }
         }
         AdbSettings.rememberVerified(context, tlsPort = port)
-        if (AdbSettings.get(context, AdbSettings.Option.TCP_5555)) {
+        if (tcpWanted) {
             status.update { it.copy(phase = Phase.CONNECTING, message = "Switching authorized shell to TCP/5555…") }
             val switched = AdbTransport.switchToTcpip()
             if (switched.isSuccess) {

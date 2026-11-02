@@ -35,6 +35,16 @@ class AdbSessionKeyLifecycleTest {
         assertFalse(s.contains("getPrivateKey(): PrivateKey = identity.privateKey"))
     }
 
+    @Test fun healthyTlsDoesNotBypassRequestedTcpPromotion() {
+        val engine = file("AdbEngine.kt")
+        assertTrue(engine.contains("if (tcpWanted && !status.value.tcpConnected)"))
+        assertTrue(engine.contains("connectTls(app, tlsPort)"))
+        assertTrue(engine.contains("verifiedExisting && (status.value.tcpConnected || !tcpWanted)"))
+        assertTrue(engine.contains("if (!verifiedExisting || status.value.tcpConnected)"))
+        assertTrue(engine.contains("AdbTransport.switchToTcpip()"))
+        assertTrue(engine.contains("if (connectTcp(context)) return true"))
+    }
+
     @Test fun timeoutRetiresManagerAndReconnectionReusesHealthyVerifiedSession() {
         val s = file("AdbTransport.kt")
         val timeout = s.substringAfter("val watchdog = launch {")
