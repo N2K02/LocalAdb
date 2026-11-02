@@ -45,6 +45,20 @@ class AdbSessionKeyLifecycleTest {
         assertTrue(engine.contains("if (connectTcp(context)) return true"))
     }
 
+    @Test fun quitIsAwaitedWithoutBlockingTheActivityThread() {
+        val engine = file("AdbEngine.kt")
+        val main = listOf(File("app/src/main/java/dev/n2k02/localadb/MainActivity.kt"),
+            File("../app/src/main/java/dev/n2k02/localadb/MainActivity.kt"))
+            .first { it.isFile }.readText()
+        assertTrue(engine.contains("suspend fun shutdown(context: Context)"))
+        assertTrue(engine.contains("withContext(NonCancellable + Dispatchers.IO)"))
+        assertFalse(engine.contains("runBlocking(Dispatchers.IO)"))
+        assertTrue(main.contains("lifecycleScope.launch"))
+        assertTrue(main.contains("AdbEngine.shutdown(applicationContext)"))
+        assertTrue(main.indexOf("AdbEngine.shutdown(applicationContext)") <
+            main.indexOf("finishAndRemoveTask()"))
+    }
+
     @Test fun timeoutRetiresManagerAndReconnectionReusesHealthyVerifiedSession() {
         val s = file("AdbTransport.kt")
         val timeout = s.substringAfter("val watchdog = launch {")

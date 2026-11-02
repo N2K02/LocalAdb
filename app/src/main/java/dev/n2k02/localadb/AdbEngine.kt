@@ -12,6 +12,8 @@ import android.provider.Settings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -376,18 +378,21 @@ internal object AdbEngine {
         return decision
     }
 
-    fun shutdown(context: Context) {
-        AdbSettings.setStopped(context, true)
+    /** Await socket cleanup; callers must not remove the Activity until done. */
+    suspend fun shutdown(context: Context) {
+        val app = context.applicationContext
+        AdbSettings.setStopped(app, true)
         active = false
         watchdog?.cancel()
         watchdog = null
         stopDiscovery()
         scope.cancel()
-        // Quit must close the socket and shell before the Activity is removed.
-        runBlocking(Dispatchers.IO) {
-            withTimeoutOrNull(2_000L) { AdbTransport.close() }
+        AdbRecoveryWorker.cancel(app)
+        // Complete cleanup even if the UI scope is cancelled during Quit.
+        // Keep blocking transport I/O off the main thread.
+        withContext(NonCancellable + Dispatchers.IO) {
+            AdbTransport.close()
         }
-        AdbRecoveryWorker.cancel(context)
         status.value = AdbStatus(phase = Phase.STOPPED, message = "Stopped by Quit.")
     }
 }
