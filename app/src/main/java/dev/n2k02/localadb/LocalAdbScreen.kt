@@ -262,6 +262,8 @@ private fun HomePage(modifier: Modifier) {
             }
         }
 
+        AdbHomeSetupCard()
+
         ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ModernSectionHeader(
