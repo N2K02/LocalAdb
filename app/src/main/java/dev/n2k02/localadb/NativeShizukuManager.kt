@@ -277,7 +277,9 @@ internal object NativeShizukuManager {
             Log.i(TAG, "Verified UID 2000. Checking embedded server SHA-256.")
             val uri = "content://" + app.packageName + ".embedded-shizuku/embedded"
             val extraction = "mkdir -p " + dir + " && chmod 700 " + dir + " && " +
-                "content read --uri " + uri + " > " + file + " && chmod 600 " + file +
+                "rm -f " + file + ".tmp && " +
+                "content read --uri " + uri + " > " + file + ".tmp && chmod 400 " + file +
+                ".tmp && mv -f " + file + ".tmp " + file +
                 " && sha256sum " + file
             val digestResult = AdbTransport.exec(extraction, 55_000).getOrThrow()
             check(digestResult.lines().any { it.trim().startsWith(SERVER_SHA256 + " ") }) {

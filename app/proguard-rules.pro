@@ -1,6 +1,11 @@
 # Keep updater DTOs and serializers handled by the library's consumer ProGuard rules.
 -keepattributes Signature,*Annotation*
 
+# app_process starts this exact class from the manager APK, outside app code references.
+-keep class moe.shizuku.starter.ServiceStarter {
+    public static void main(java.lang.String[]);
+}
+
 # Shizuku instantiates the diagnostic helper with its public no-argument constructor.
 -keep class dev.n2k02.localadb.LocalHelperService { public <init>(); }
 

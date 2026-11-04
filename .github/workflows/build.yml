@@ -128,6 +128,7 @@ jobs:
         env:
           N2K02_PACKAGES_TOKEN: ${{ secrets.N2K02_PACKAGES_TOKEN }}
         run: |
+          python3 -m unittest discover -s scripts -p 'test_verify_release_shizuku.py'
           chmod +x gradlew
           ./gradlew --no-daemon testDebugUnitTest lintDebug || {
             echo "::group::Android lint findings"
@@ -164,6 +165,10 @@ jobs:
           # Inspect the minified DEX before signing/publishing. AndroidX Startup
           # instantiates WorkDatabase_Impl reflectively before the Activity loads.
           python3 scripts/verify_release_workmanager.py app/build/outputs/apk/release/app-release-unsigned.apk
+          if [ "$BUILD_VARIANT" = "Debug" ]; then
+            python3 scripts/verify_release_shizuku.py app/build/outputs/apk/debug/app-debug.apk
+          fi
+          python3 scripts/verify_release_shizuku.py app/build/outputs/apk/release/app-release-unsigned.apk
           # Sign with the app's private key. It is stored encrypted in signing/keys.tar.enc and
           # unlocked with the SIGNING_PASSPHRASE repository secret, only for this step.
           # Key rotation: Android 9+ moves from the old (public test) key to the private key with

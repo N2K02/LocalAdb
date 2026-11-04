@@ -12,6 +12,10 @@ runtime component. It is **not installed as a separate Android application**.
 - Source and upstream attribution: retained in the linked upstream repository.
 - Modifications to upstream executable payload: none (checksum verified).
 - LocalAdb adds its own APK manager, provider, and shell-based startup.
+- LocalAdb's `moe.shizuku.starter.ServiceStarter` entry point delegates to the
+  checksum-verified upstream starter in an isolated classloader. The manager
+  provider implements the upstream `sendUserService` / `attachUserService`
+  handshake. The executable upstream payload remains unmodified.
 
 The upstream APK is used as a classpath payload for a local shell process;
 it is not installed as an app. If it cannot start or deliver a verified Binder,
