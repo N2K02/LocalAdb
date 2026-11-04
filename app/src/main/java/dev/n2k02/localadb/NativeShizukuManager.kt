@@ -168,6 +168,7 @@ internal object NativeShizukuManager {
 
     /** Explicit Stop disables auto-restart until the user asks to Restart. */
     fun stop(context: Context) {
+        LocalHelperDiagnostics.cancel()
         val app = context.applicationContext
         setManuallyStopped(app, true)
         launch?.cancel()
@@ -177,6 +178,7 @@ internal object NativeShizukuManager {
 
     /** Explicit Restart clears the sticky Stop flag and recreates the server. */
     fun restart(context: Context) {
+        LocalHelperDiagnostics.cancel()
         val app = context.applicationContext
         setManuallyStopped(app, false)
         launch?.cancel()
@@ -440,6 +442,7 @@ internal object NativeShizukuManager {
      * connection, even if binder handoff previously failed.
      */
     fun shutdown(context: Context) {
+        LocalHelperDiagnostics.cancel()
         launch?.cancel()
         launch = null
         // Time bounded; the regular Stop button provides fuller verification.

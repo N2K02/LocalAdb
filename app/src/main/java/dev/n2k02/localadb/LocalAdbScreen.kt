@@ -201,6 +201,7 @@ private fun HomePage(modifier: Modifier) {
     val context = LocalContext.current
     val connection by AdbEngine.status.collectAsState()
     val shizuku by NativeShizukuManager.state.collectAsState()
+    val helperTest by LocalHelperDiagnostics.state.collectAsState()
     val permissions by AdbPermissionBootstrap.state.collectAsState()
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
     var appCounts by remember { mutableStateOf<Pair<Int, Int>?>(null) }
@@ -208,6 +209,7 @@ private fun HomePage(modifier: Modifier) {
     // Count real eligible installed apps, not invented screenshot values.
     // Returning to Home re-enters composition and refreshes the live counts.
     LaunchedEffect(shizuku.serviceReady) {
+        if (!shizuku.serviceReady) LocalHelperDiagnostics.cancel()
         appCounts = null
         try {
             val available = withContext(Dispatchers.IO) {
@@ -321,6 +323,14 @@ private fun HomePage(modifier: Modifier) {
                         Text("Restart")
                     }
                 }
+                OutlinedButton(
+                    onClick = { LocalHelperDiagnostics.start(context) },
+                    enabled = shizuku.serviceReady && !shizuku.starting &&
+                        !shizuku.stopping && !helperTest.running
+                ) {
+                    Text(if (helperTest.running) "Testing LocalHelper…" else "Test LocalHelper")
+                }
+                Text(helperTest.message, style = MaterialTheme.typography.bodySmall)
                 Text(
                     if (shizuku.manuallyStopped) "Automatic startup paused until Restart."
                     else "Automatically starts when ADB verifies shell UID 2000.",
