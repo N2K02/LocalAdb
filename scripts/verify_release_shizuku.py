@@ -31,7 +31,7 @@ def verify_starter(archive: zipfile.ZipFile, dexdump: Path, directory: Path) -> 
         dex = directory / name
         dex.write_bytes(archive.read(name))
         output = subprocess.run([str(dexdump), str(dex)], check=True, capture_output=True,
-                                text=True, timeout=120).stdout
+                                text=True, encoding="utf-8", errors="replace", timeout=120).stdout
         if has_public_main(output, STARTER):
             return
     raise ValueError("Missing public static moe.shizuku.starter.ServiceStarter.main(String[])")

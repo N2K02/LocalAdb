@@ -1,5 +1,8 @@
 import unittest
-from verify_release_shizuku import STARTER, has_public_main
+import tempfile
+from pathlib import Path
+import zipfile
+from verify_release_shizuku import STARTER, has_public_main, verify_starter
 
 
 class StarterDexTest(unittest.TestCase):
@@ -26,6 +29,20 @@ class StarterDexTest(unittest.TestCase):
 
     def test_wrong_signature_is_rejected(self):
         self.assertFalse(has_public_main(self.fixture(signature="()V"), STARTER))
+
+    def test_non_utf8_dex_strings_do_not_hide_valid_entrypoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            tool = directory / "dexdump"
+            output = b"unrelated modified UTF-8: \xc0\x80\n" + self.fixture().encode()
+            tool.write_text("#!/usr/bin/env python3\nimport sys\nsys.stdout.buffer.write(" +
+                            repr(output) + ")\n")
+            tool.chmod(0o700)
+            apk = directory / "fixture.apk"
+            with zipfile.ZipFile(apk, "w") as archive:
+                archive.writestr("classes.dex", b"fixture")
+            with zipfile.ZipFile(apk) as archive:
+                verify_starter(archive, tool, directory)
 
 
 if __name__ == "__main__":
