@@ -120,6 +120,12 @@ before calling it fully drop-in compatible.
 
 ## ADB command privacy and safety
 
+On Home, **Test LocalHelper** starts a dedicated Shizuku user service and checks
+that it returns UID 2000 and echoes a fresh challenge over Binder IPC. A running
+manager Binder alone cannot pass this test. The temporary service is removed
+after each test, including timeout or cancellation. This checks LocalAdb's user
+service path; each third-party client's own helper still needs its own check.
+
 The console executes user-entered commands only after re-verifying a live shell
 UID 2000 under the transport mutex. These commands may change device state.
 Console history and captured output remain in memory; only explicit bookmarks
