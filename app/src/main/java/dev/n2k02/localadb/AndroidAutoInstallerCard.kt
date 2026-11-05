@@ -177,20 +177,27 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                verticalAlignment = Alignment.Top,
+            // Neutral note is visually separate from the read-back metadata.
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
             ) {
-                Icon(Icons.Rounded.InfoOutline, contentDescription = null,
-                    modifier = Modifier.size(17.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    "Google Play attribution does not guarantee this app will appear in Android Auto.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
+                Row(
+                    modifier = Modifier.padding(9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(Icons.Rounded.InfoOutline, contentDescription = null,
+                        modifier = Modifier.size(17.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Google Play attribution does not guarantee this app will appear in Android Auto.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
