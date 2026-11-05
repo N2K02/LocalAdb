@@ -1,0 +1,69 @@
+package dev.n2k02.localadb
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
+
+class CompactHomeInstallerUiTest {
+    private fun source(name: String) =
+        File("src/main/java/dev/n2k02/localadb/$name").readText()
+
+    @Test fun allFourHomeMetricsRemainVisibleWithSmallerTwoLineTiles() {
+        val main = source("LocalAdbScreen.kt")
+        val home = main.substringAfter("private fun HomePage(")
+            .substringBefore("private fun SettingsPage(")
+        val ui = source("ModernDashboardUi.kt")
+        assertTrue(home.contains("HomeMetric(\"Shell\""))
+        assertTrue(home.contains("HomeMetric(\"Pairing\""))
+        assertTrue(home.contains("HomeMetric(\"Transport\""))
+        assertTrue(home.contains("HomeMetric(\"Discovery\""))
+        assertTrue(home.contains("HomeMetric(\"Clients\""))
+        assertTrue(home.contains("HomeMetric(\"Grants\""))
+        assertTrue(ui.contains("Two-line metrics preserve the 1×4 Home summary"))
+        assertTrue(ui.contains("horizontalArrangement = Arrangement.spacedBy(3.dp)"))
+        assertTrue(ui.contains("vertical = if (compact) 4.dp else 6.dp"))
+        assertFalse(home.contains("if (connection.connected) {\n                    Text(connection.message"))
+    }
+
+    @Test fun shizukuControlsShareOneCompactRowAndKeepDiagnostics() {
+        val home = source("LocalAdbScreen.kt")
+            .substringAfter("private fun HomePage(")
+            .substringBefore("private fun SettingsPage(")
+        assertTrue(home.contains("Three compact controls share one row"))
+        assertTrue(home.contains("NativeShizukuManager.stop(context)"))
+        assertTrue(home.contains("NativeShizukuManager.restart(context)"))
+        assertTrue(home.contains("LocalHelperDiagnostics.start(context)"))
+        assertTrue(home.contains("showDiagnostics"))
+        assertTrue(home.contains("if (helperTest.running ||"))
+        assertTrue(home.contains("if (coverage != null && coverage < 1f)"))
+        assertTrue(home.contains("DashboardPresentation.permissionName(permission)"))
+    }
+
+    @Test fun installerDetailsUseReadbackFieldsInsteadOfParsingDebugText() {
+        val ui = source("AndroidAutoInstallerCard.kt")
+        val source = source("AndroidAutoPackageInstaller.kt")
+        assertTrue(ui.contains("rememberSaveable { mutableStateOf(false) }"))
+        assertTrue(ui.contains("InstallerDetailRow(\"Package\""))
+        assertTrue(ui.contains("InstallerDetailRow(\"Version\""))
+        assertTrue(ui.contains("InstallerDetailRow(\"Initiator\""))
+        assertTrue(ui.contains("InstallerDetailRow(\"Installer\""))
+        assertTrue(ui.contains("state.installingPackage"))
+        assertTrue(ui.contains("state.initiatingPackage"))
+        assertTrue(ui.contains("if (showDetails) AndroidAutoInstallerDetails(state)"))
+        assertTrue(ui.contains("Google Play attribution does not guarantee"))
+        assertTrue(source.contains("initiatingPackage = initiator, installingPackage = installing"))
+        assertTrue(source.contains("initiatingPackage = null, installingPackage = null"))
+        assertFalse(ui.contains("Text(state.details, fontFamily = FontFamily.Monospace"))
+        assertTrue(ui.contains("SelectionContainer"))
+    }
+
+    @Test fun installerRemainsLastCardAndBottomNavigationIsUnchanged() {
+        val main = source("LocalAdbScreen.kt")
+        val home = main.substringAfter("private fun HomePage(")
+            .substringBefore("private fun SettingsPage(")
+        assertTrue(home.indexOf("AndroidAutoInstallerCard()") > home.indexOf("Android permissions"))
+        assertTrue(main.contains("Page.HOME -> HomePage(pageModifier)"))
+        assertTrue(main.contains("NavigationBarItem("))
+    }
+}

@@ -6,13 +6,14 @@ header and VRec-style Home status cards.
 
 ## Navigation
 
-- **Home**: three richly accented, live-status cards for ADB, the embedded
+- **Home**: three compact, live-status cards for ADB, the embedded
   Shizuku manager, and LocalAdb's verified Android permissions. Only Home has
   the Shizuku **Stop / Restart** actions, automatic recovery details, and
   selectable startup diagnostics. The permissions card names the **actual
   Android read-back grants** (Nearby Wi-Fi, Local network, Secure settings
   when eligible); no placeholder/mock permissions are shown. Counts of
   Shizuku clients and eligible Android grants are populated from a live scan.
+- **Home > Shizuku package installer**: choose one signed APK and confirm the system installer prompt. LocalAdb's embedded Shizuku UID 2000 LocalHelper launches the Android package installer with Google Play install-source attribution and checks the resulting PackageManager read-back. One alternate launch path is tried on OEMs that reject the first. This is **not** a silent install and does not magically make an incompatible APK work in Android Auto. Split APK / XAPK bundles are not supported.
 - **Apps**: matching gradient-accented client cards, verified color-coded
   Shizuku authorization badges, compact app statistics, search and
   User/System/Disabled/Hidden and Android grant filters. Shizuku API access
@@ -117,6 +118,36 @@ will not uninstall or impersonate another manager. Older Shizuku clients that
 hard-code the official manager package moe.shizuku.privileged.api may not find
 the LocalAdb manager (dev.n2k02.localadb). Real-device testing is necessary
 before calling it fully drop-in compatible.
+
+## Android Auto package installer
+
+The **Shizuku package installer** card on Home follows the approach used in
+[UnknownAuto](https://github.com/GitMag/UnknownAuto), adapted to the **embedded**
+Shizuku manager and LocalHelper service already provided by LocalAdb. It is an
+installer tool, not an Android Auto modification or an APK patcher.
+
+1. Start LocalAdb and wait for the embedded Shizuku Binder / UID 2000 to be ready.
+2. Tap **Choose APK** and select an ordinary signed .apk (not XAPK / split APKs).
+3. Tap **Install** and approve the Android **system** installer prompt. On older
+   Android versions you may first be asked to allow LocalAdb to install unknown apps.
+4. Read the attribution check. Successful read-back requires installing package
+   **com.android.vending** and an acceptable system installer initiating package.
+   Android Auto itself must still discover and support the app.
+
+LocalAdb validates the installed version/signing key, stages only the selected
+APK in private cache and grants read access to the system installer through a
+single-path, read-only provider. The shell helper accepts only that provider URI
+and an allowlisted system installer component. Android 14 and earlier use the
+Shizuku service's result-target launch; newer Android uses a shell-launched
+system installer. If an install succeeds without the expected mark, one alternate
+launch path is tried and the working method remembered. Install failures do not
+uninstall an existing app or delete its data. Quit clears the staged APK and
+cancels LocalAdb's pending installer operations.
+
+The metadata status is **not** a runtime Android Auto success guarantee. OEM
+package installers differ, Play Protect may block an APK, and Android Auto
+has other capability and compatibility checks. Validate on a real device and
+car/head unit before relying on this for release distribution.
 
 ## ADB command privacy and safety
 

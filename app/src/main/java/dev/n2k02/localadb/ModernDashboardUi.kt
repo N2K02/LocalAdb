@@ -44,6 +44,7 @@ internal enum class DashboardTone(val accent: Color) {
 internal fun ModernPanel(
     modifier: Modifier = Modifier,
     tone: DashboardTone = DashboardTone.INFO,
+    compact: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(23.dp)
@@ -57,7 +58,7 @@ internal fun ModernPanel(
                 )
             )
             .border(BorderStroke(1.dp, tone.accent.copy(alpha = 0.39f)), shape)
-            .padding(15.dp),
+            .padding(if (compact) 10.dp else 15.dp),
     ) { content() }
 }
 
@@ -66,6 +67,7 @@ internal fun ModernStatusChip(
     text: String,
     tone: DashboardTone,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
     icon: ImageVector? = when (tone) {
         DashboardTone.GOOD -> Icons.Rounded.CheckCircle
         DashboardTone.WARN -> Icons.Rounded.Schedule
@@ -83,14 +85,16 @@ internal fun ModernStatusChip(
         border = BorderStroke(1.dp, tone.accent.copy(alpha = 0.50f)),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = if (compact) 8.dp else 10.dp,
+                vertical = if (compact) 4.dp else 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
+                Icon(icon, contentDescription = null, modifier = Modifier.size(if (compact) 12.dp else 14.dp))
             }
-            Text(text, style = MaterialTheme.typography.labelMedium, maxLines = 1,
+            Text(text, style = if (compact) MaterialTheme.typography.labelSmall
+                else MaterialTheme.typography.labelMedium, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
         }
     }
@@ -105,6 +109,7 @@ internal fun ModernSectionHeader(
     subtitle: String? = null,
     status: String? = null,
     statusTone: DashboardTone = tone,
+    compact: Boolean = false,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -114,23 +119,25 @@ internal fun ModernSectionHeader(
         Surface(
             shape = RoundedCornerShape(15.dp),
             color = tone.accent.copy(alpha = 0.17f),
-            modifier = Modifier.size(45.dp),
+            modifier = Modifier.size(if (compact) 36.dp else 45.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = null, tint = tone.accent,
-                    modifier = Modifier.size(25.dp))
+                    modifier = Modifier.size(if (compact) 20.dp else 25.dp))
             }
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2,
+            Text(title, style = MaterialTheme.typography.titleMedium,
+                maxLines = if (compact) 1 else 2,
                 overflow = TextOverflow.Ellipsis)
             if (subtitle != null) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = if (compact) 1 else 3,
                     overflow = TextOverflow.Ellipsis)
             }
         }
-        if (status != null) ModernStatusChip(status, statusTone)
+        if (status != null) ModernStatusChip(status, statusTone, compact = compact)
     }
 }
 
@@ -141,6 +148,7 @@ internal fun ModernMetric(
     icon: ImageVector,
     modifier: Modifier = Modifier,
     tone: DashboardTone = DashboardTone.INFO,
+    compact: Boolean = false,
 ) {
     Surface(
         modifier = modifier,
@@ -149,18 +157,52 @@ internal fun ModernMetric(
         border = BorderStroke(1.dp, tone.accent.copy(alpha = 0.30f)),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = if (compact) 6.dp else 11.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(icon, contentDescription = null, tint = tone.accent,
-                modifier = Modifier.size(19.dp))
+                modifier = Modifier.size(if (compact) 15.dp else 19.dp))
             Text(label, style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
             Text(value, style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Two-line metrics preserve the 1×4 Home summary without tall nested tiles. */
+@Composable
+internal fun HomeMetric(
+    label: String, value: String, icon: ImageVector, modifier: Modifier,
+    tone: DashboardTone = DashboardTone.INFO,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, tone.accent.copy(alpha = 0.27f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 3.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Icon(icon, contentDescription = null, tint = tone.accent,
+                    modifier = Modifier.size(13.dp))
+                Text(label, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(value, style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

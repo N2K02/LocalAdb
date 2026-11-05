@@ -50,6 +50,10 @@
             android:authorities="${applicationId}.embedded-shizuku"
             android:exported="true" android:grantUriPermissions="false"
             android:readPermission="android.permission.DUMP" />
+        <!-- Only the selected APK, served via an explicit read-only URI grant. -->
+        <provider android:name=".AndroidAutoApkProvider"
+            android:authorities="${applicationId}.android-auto-apk"
+            android:exported="false" android:grantUriPermissions="true" />
         <receiver android:name=".ShizukuBinderRequestReceiver"
             android:exported="true" tools:ignore="ExportedReceiver">
             <intent-filter>
