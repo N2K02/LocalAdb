@@ -67,6 +67,7 @@ internal fun ModernStatusChip(
     text: String,
     tone: DashboardTone,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
     icon: ImageVector? = when (tone) {
         DashboardTone.GOOD -> Icons.Rounded.CheckCircle
         DashboardTone.WARN -> Icons.Rounded.Schedule
@@ -84,14 +85,16 @@ internal fun ModernStatusChip(
         border = BorderStroke(1.dp, tone.accent.copy(alpha = 0.50f)),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = if (compact) 8.dp else 10.dp,
+                vertical = if (compact) 4.dp else 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
+                Icon(icon, contentDescription = null, modifier = Modifier.size(if (compact) 12.dp else 14.dp))
             }
-            Text(text, style = MaterialTheme.typography.labelMedium, maxLines = 1,
+            Text(text, style = if (compact) MaterialTheme.typography.labelSmall
+                else MaterialTheme.typography.labelMedium, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
         }
     }
@@ -124,15 +127,17 @@ internal fun ModernSectionHeader(
             }
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2,
+            Text(title, style = MaterialTheme.typography.titleMedium,
+                maxLines = if (compact) 1 else 2,
                 overflow = TextOverflow.Ellipsis)
             if (subtitle != null) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = if (compact) 1 else 3,
                     overflow = TextOverflow.Ellipsis)
             }
         }
-        if (status != null) ModernStatusChip(status, statusTone)
+        if (status != null) ModernStatusChip(status, statusTone, compact = compact)
     }
 }
 
@@ -168,9 +173,36 @@ internal fun ModernMetric(
     }
 }
 
-/** Slim metrics are Home-only; Apps and ADB keep their existing sizing. */
+/** Two-line metrics preserve the 1×4 Home summary without tall nested tiles. */
 @Composable
 internal fun HomeMetric(
     label: String, value: String, icon: ImageVector, modifier: Modifier,
     tone: DashboardTone = DashboardTone.INFO,
-) = ModernMetric(label, value, icon, modifier, tone, compact = true)
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, tone.accent.copy(alpha = 0.27f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 3.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Icon(icon, contentDescription = null, tint = tone.accent,
+                    modifier = Modifier.size(13.dp))
+                Text(label, style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(value, style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
