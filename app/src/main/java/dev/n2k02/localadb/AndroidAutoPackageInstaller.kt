@@ -43,6 +43,10 @@ internal object AndroidAutoPackageInstaller {
         val pending: Boolean = false,
         val success: Boolean = false,
         val message: String = "Select a compatible Android Auto APK to install.",
+        // Structured read-back is independent of the free-form error message.
+        val initiatingPackage: String? = null,
+        val installingPackage: String? = null,
+        val installMethod: String? = null,
         val details: String = "",
     )
     val state = MutableStateFlow(State())
@@ -108,7 +112,7 @@ internal object AndroidAutoPackageInstaller {
                 state.value = State(packageName = parsed.packageName,
                     version = parsed.versionName.orEmpty(), sizeBytes = length,
                     message = "Ready. Confirm installation to continue.",
-                    details = "Installer metadata will be checked after installation.")
+                    details = "")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -148,6 +152,7 @@ internal object AndroidAutoPackageInstaller {
             val packageName = staged.packageName
             try {
                 state.value = state.value.copy(busy = true, success = false,
+                    initiatingPackage = null, installingPackage = null,
                     message = "Checking APK and installed version…")
                 val old = packageInfo(activity, packageName)
                 @Suppress("DEPRECATION")
@@ -209,8 +214,9 @@ internal object AndroidAutoPackageInstaller {
                         Uri.parse("android-app://" + AndroidAutoInstallPolicy.VENDING))
                 }
                 state.value = state.value.copy(busy = true, pending = true,
+                    installMethod = path.name,
                     message = "Confirm the system installer prompt…",
-                    details = "Method: " + path.name + " · " + packageName)
+                    details = "")
                 if (path == AndroidAutoInstallPolicy.Path.SHELL) {
                     intent.component = ComponentName.unflattenFromString(target)
                     val result = withContext(Dispatchers.IO) {
@@ -312,15 +318,14 @@ internal object AndroidAutoPackageInstaller {
         }
         val accepted = AndroidAutoInstallPolicy.accepts(
             initiator, installing, Build.VERSION.SDK_INT)
-        val details = "Initiator: " + (initiator ?: "unknown") +
-            "\nInstaller: " + (installing ?: "unknown")
         if (accepted) {
             activity.getSharedPreferences("android_auto_installer", Context.MODE_PRIVATE)
                 .edit().putBoolean("shell_works",
                     lastPath == AndroidAutoInstallPolicy.Path.SHELL).apply()
             state.value = state.value.copy(pending = false, success = true,
+                initiatingPackage = initiator, installingPackage = installing,
                 message = "Installed with accepted Google Play attribution.",
-                details = details + "\nAndroid Auto still checks app compatibility.")
+                details = "")
             return
         }
         if (AndroidAutoInstallPolicy.shouldRetry(true, accepted, retried)) {
@@ -332,15 +337,17 @@ internal object AndroidAutoPackageInstaller {
             }.getOrDefault(false)
             if (alternate != AndroidAutoInstallPolicy.Path.SHELL || shellReady) {
                 state.value = state.value.copy(pending = false, busy = false,
+                    initiatingPackage = initiator, installingPackage = installing,
                     message = "Attribution was rejected; retrying the alternative installer…",
-                    details = details)
+                    details = "")
                 launch(activity, alternate)
                 return
             }
         }
         state.value = state.value.copy(pending = false, busy = false,
+            initiatingPackage = initiator, installingPackage = installing,
             message = "APK installed, but Google Play attribution was not accepted.",
-            details = details)
+            details = "")
     }
 
     fun shutdown(context: Context) {
