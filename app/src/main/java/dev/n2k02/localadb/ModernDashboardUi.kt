@@ -44,6 +44,7 @@ internal enum class DashboardTone(val accent: Color) {
 internal fun ModernPanel(
     modifier: Modifier = Modifier,
     tone: DashboardTone = DashboardTone.INFO,
+    compact: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(23.dp)
@@ -57,7 +58,7 @@ internal fun ModernPanel(
                 )
             )
             .border(BorderStroke(1.dp, tone.accent.copy(alpha = 0.39f)), shape)
-            .padding(15.dp),
+            .padding(if (compact) 10.dp else 15.dp),
     ) { content() }
 }
 
@@ -105,6 +106,7 @@ internal fun ModernSectionHeader(
     subtitle: String? = null,
     status: String? = null,
     statusTone: DashboardTone = tone,
+    compact: Boolean = false,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -114,11 +116,11 @@ internal fun ModernSectionHeader(
         Surface(
             shape = RoundedCornerShape(15.dp),
             color = tone.accent.copy(alpha = 0.17f),
-            modifier = Modifier.size(45.dp),
+            modifier = Modifier.size(if (compact) 36.dp else 45.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(icon, contentDescription = null, tint = tone.accent,
-                    modifier = Modifier.size(25.dp))
+                    modifier = Modifier.size(if (compact) 20.dp else 25.dp))
             }
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -141,6 +143,7 @@ internal fun ModernMetric(
     icon: ImageVector,
     modifier: Modifier = Modifier,
     tone: DashboardTone = DashboardTone.INFO,
+    compact: Boolean = false,
 ) {
     Surface(
         modifier = modifier,
@@ -149,12 +152,12 @@ internal fun ModernMetric(
         border = BorderStroke(1.dp, tone.accent.copy(alpha = 0.30f)),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = if (compact) 6.dp else 11.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(icon, contentDescription = null, tint = tone.accent,
-                modifier = Modifier.size(19.dp))
+                modifier = Modifier.size(if (compact) 15.dp else 19.dp))
             Text(label, style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
@@ -164,3 +167,10 @@ internal fun ModernMetric(
         }
     }
 }
+
+/** Slim metrics are Home-only; Apps and ADB keep their existing sizing. */
+@Composable
+internal fun HomeMetric(
+    label: String, value: String, icon: ImageVector, modifier: Modifier,
+    tone: DashboardTone = DashboardTone.INFO,
+) = ModernMetric(label, value, icon, modifier, tone, compact = true)
