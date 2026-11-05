@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
                         AdbConsole.shutdown()
                     } finally {
                         try {
+                            runCatching { AndroidAutoPackageInstaller.shutdown(applicationContext) }
                             NativeShizukuManager.shutdown(applicationContext)
                         } finally {
                             try {
