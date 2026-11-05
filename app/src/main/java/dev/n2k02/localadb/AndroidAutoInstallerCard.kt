@@ -10,7 +10,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.FileOpen
-import androidx.compose.material.icons.rounded.InfoOutline
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.InstallMobile
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
@@ -188,7 +188,7 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    Icon(Icons.Rounded.InfoOutline, contentDescription = null,
+                    Icon(Icons.Rounded.Info, contentDescription = null,
                         modifier = Modifier.size(17.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
