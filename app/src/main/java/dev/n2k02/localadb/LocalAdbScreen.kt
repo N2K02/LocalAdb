@@ -226,11 +226,11 @@ private fun HomePage(modifier: Modifier) {
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO, compact = true) {
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 ModernSectionHeader(
                     title = "ADB connection", icon = Icons.Rounded.Wifi,
                     tone = DashboardTone.INFO,
@@ -241,7 +241,7 @@ private fun HomePage(modifier: Modifier) {
                     else DashboardTone.ERROR,
                     compact = true,
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     HomeMetric("Shell", if (connection.connected) "2000" else "—",
                         Icons.Rounded.Terminal, Modifier.weight(1f),
                         if (connection.connected) DashboardTone.GOOD else DashboardTone.WARN)
@@ -259,16 +259,18 @@ private fun HomePage(modifier: Modifier) {
                     HomeMetric("Discovery", if (connection.scanning) "Scan" else "Idle",
                         Icons.Rounded.Radar, Modifier.weight(1f), DashboardTone.NEUTRAL)
                 }
-                Text(connection.message, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (!connection.connected) {
+                    Text(connection.message, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
 
         AdbHomeSetupCard()
 
         ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO, compact = true) {
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 ModernSectionHeader(
                     title = "Shizuku manager", icon = Icons.Rounded.Security,
                     tone = DashboardTone.INFO,
@@ -288,7 +290,7 @@ private fun HomePage(modifier: Modifier) {
                     },
                     compact = true,
                 )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     HomeMetric("Binder", if (shizuku.serviceReady) "Active" else "Offline",
                         Icons.Rounded.Dns, Modifier.weight(1f),
                         if (shizuku.serviceReady) DashboardTone.GOOD else DashboardTone.WARN)
@@ -300,37 +302,43 @@ private fun HomePage(modifier: Modifier) {
                     HomeMetric("Grants", appCounts?.second?.toString() ?: "—",
                         Icons.Rounded.Key, Modifier.weight(1f))
                 }
+                // Three compact controls share one row; their full actions remain available.
                 Row(Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         onClick = { NativeShizukuManager.stop(context) },
                         enabled = !shizuku.stopping &&
                             (connection.connected || shizuku.serviceReady || shizuku.starting)
                     ) {
                         Icon(Icons.Rounded.Stop, contentDescription = null,
-                            modifier = Modifier.size(18.dp))
+                            modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Stop")
+                        Text("Stop", maxLines = 1)
                     }
                     Button(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
                         onClick = { NativeShizukuManager.restart(context) },
                         enabled = connection.connected && !shizuku.starting && !shizuku.stopping
                     ) {
                         Icon(Icons.Rounded.RestartAlt, contentDescription = null,
-                            modifier = Modifier.size(18.dp))
+                            modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Restart")
+                        Text("Restart", maxLines = 1)
                     }
-                }
-                OutlinedButton(
-                    onClick = { LocalHelperDiagnostics.start(context) },
-                    enabled = shizuku.serviceReady && !shizuku.starting &&
-                        !shizuku.stopping && !helperTest.running
-                ) {
-                    Text(if (helperTest.running) "Testing LocalHelper…" else "Test LocalHelper")
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f).heightIn(min = 40.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        onClick = { LocalHelperDiagnostics.start(context) },
+                        enabled = shizuku.serviceReady && !shizuku.starting &&
+                            !shizuku.stopping && !helperTest.running
+                    ) {
+                        Text(if (helperTest.running) "Testing…" else "Test helper",
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
                 if (helperTest.running || helperTest.message != "LocalHelper not tested") {
                     Text(helperTest.message, style = MaterialTheme.typography.bodySmall,
@@ -360,7 +368,7 @@ private fun HomePage(modifier: Modifier) {
         }
 
         ModernPanel(Modifier.fillMaxWidth(), DashboardTone.GOOD, compact = true) {
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 ModernSectionHeader(
                     title = "Android permissions",
                     subtitle = DashboardPresentation.permissionSummary(
@@ -392,6 +400,7 @@ private fun HomePage(modifier: Modifier) {
                                 ModernStatusChip(
                                     DashboardPresentation.permissionName(permission),
                                     if (granted) DashboardTone.GOOD else DashboardTone.ERROR,
+                                    compact = true,
                                     icon = if (granted) Icons.Rounded.CheckCircle
                                     else Icons.Rounded.ErrorOutline
                                 )
@@ -402,7 +411,7 @@ private fun HomePage(modifier: Modifier) {
                         permissions.finished, permissions.granted.size,
                         permissions.unavailable.size
                     )
-                    if (coverage != null) {
+                    if (coverage != null && coverage < 1f) {
                         LinearProgressIndicator(
                             progress = { coverage },
                             modifier = Modifier.fillMaxWidth(),
