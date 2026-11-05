@@ -3,28 +3,21 @@ package dev.n2k02.localadb
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.FileOpen
+import androidx.compose.material.icons.rounded.InfoOutline
 import androidx.compose.material.icons.rounded.InstallMobile
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -41,9 +34,12 @@ internal fun AndroidAutoInstallerCard() {
     val lifecycle = LocalLifecycleOwner.current
     val state by AndroidAutoPackageInstaller.state.collectAsState()
     val server by NativeShizukuManager.state.collectAsState()
-    var showDetails by remember { mutableStateOf(false) }
+    var showDetails by rememberSaveable { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) AndroidAutoPackageInstaller.select(context, uri)
+        if (uri != null) {
+            showDetails = false
+            AndroidAutoPackageInstaller.select(context, uri)
+        }
     }
 
     DisposableEffect(lifecycle, activity) {
@@ -57,10 +53,10 @@ internal fun AndroidAutoInstallerCard() {
     }
 
     ModernPanel(Modifier.fillMaxWidth(), DashboardTone.NEUTRAL, compact = true) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             ModernSectionHeader(
                 title = "Shizuku package installer",
-                subtitle = "Install Android Auto APKs with Google Play attribution",
+                subtitle = "Install APKs with Play attribution",
                 icon = Icons.Rounded.Android,
                 tone = DashboardTone.NEUTRAL,
                 status = when {
@@ -81,8 +77,7 @@ internal fun AndroidAutoInstallerCard() {
                 Text(
                     state.packageName + (if (state.version.isNotBlank()) " · v" + state.version else ""),
                     style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
             }
             Text(state.message, style = MaterialTheme.typography.bodySmall,
@@ -97,8 +92,8 @@ internal fun AndroidAutoInstallerCard() {
                             "application/octet-stream"))
                     }
                 ) {
-                    androidx.compose.material3.Icon(Icons.Rounded.FileOpen,
-                        contentDescription = null)
+                    Icon(Icons.Rounded.FileOpen, contentDescription = null,
+                        modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(5.dp))
                     Text("Choose APK", maxLines = 1)
                 }
@@ -108,26 +103,114 @@ internal fun AndroidAutoInstallerCard() {
                         !state.busy && !state.pending,
                     onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
                 ) {
-                    androidx.compose.material3.Icon(Icons.Rounded.InstallMobile,
-                        contentDescription = null)
+                    Icon(Icons.Rounded.InstallMobile, contentDescription = null,
+                        modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(5.dp))
                     Text("Install", maxLines = 1)
                 }
             }
-            if (state.details.isNotBlank()) {
-                TextButton(onClick = { showDetails = !showDetails }) {
-                    Text(if (showDetails) "Hide installer details" else "Show installer details")
+            val hasDetails = state.packageName != null || state.installMethod != null ||
+                state.initiatingPackage != null || state.installingPackage != null ||
+                state.details.isNotBlank()
+            if (hasDetails) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth()
+                        .clickable { showDetails = !showDetails },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Installer details",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelLarge)
+                        Icon(
+                            if (showDetails) Icons.Rounded.KeyboardArrowUp
+                            else Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = if (showDetails) "Hide installer details"
+                                else "Show installer details",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
-                if (showDetails) {
-                    Text(state.details, fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall)
-                }
+                if (showDetails) AndroidAutoInstallerDetails(state)
             }
             if (!server.serviceReady) {
                 Text("Start the embedded Shizuku manager for the shell-assisted method.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+@Composable
+private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            state.packageName?.let { InstallerDetailRow("Package", it) }
+            if (state.version.isNotBlank()) InstallerDetailRow("Version", "v" + state.version)
+            state.installMethod?.let {
+                InstallerDetailRow("Method",
+                    if (it == "SHELL") "Shizuku · shell" else "System installer")
+            }
+            if (state.initiatingPackage != null || state.installingPackage != null) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                InstallerDetailRow("Initiator", state.initiatingPackage ?: "Not recorded")
+                InstallerDetailRow("Installer", state.installingPackage ?: "Not recorded")
+            }
+            if (state.details.isNotBlank()) {
+                SelectionContainer {
+                    Text(state.details, style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(Icons.Rounded.InfoOutline, contentDescription = null,
+                    modifier = Modifier.size(17.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Google Play attribution does not guarantee this app will appear in Android Auto.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InstallerDetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(label, modifier = Modifier.width(68.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SelectionContainer {
+            Text(value, modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
