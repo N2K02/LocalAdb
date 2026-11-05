@@ -206,8 +206,8 @@ private fun InstallerDetailRow(label: String, value: String) {
         Text(label, modifier = Modifier.width(68.dp),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SelectionContainer {
-            Text(value, modifier = Modifier.weight(1f),
+        SelectionContainer(modifier = Modifier.weight(1f)) {
+            Text(value,
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurface)
