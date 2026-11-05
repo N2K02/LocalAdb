@@ -226,11 +226,11 @@ private fun HomePage(modifier: Modifier) {
 
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO) {
-            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO, compact = true) {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 ModernSectionHeader(
                     title = "ADB connection", icon = Icons.Rounded.Wifi,
                     tone = DashboardTone.INFO,
@@ -239,35 +239,36 @@ private fun HomePage(modifier: Modifier) {
                     status = if (connection.connected) "Ready" else "Offline",
                     statusTone = if (connection.connected) DashboardTone.GOOD
                     else DashboardTone.ERROR,
+                    compact = true,
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    ModernMetric("Shell", if (connection.connected) "2000" else "—",
+                    HomeMetric("Shell", if (connection.connected) "2000" else "—",
                         Icons.Rounded.Terminal, Modifier.weight(1f),
                         if (connection.connected) DashboardTone.GOOD else DashboardTone.WARN)
-                    ModernMetric("Pairing", when {
+                    HomeMetric("Pairing", when {
                         connection.connected -> "Paired"
                         connection.pairingPort != null -> "Found"
                         else -> "Waiting"
                     }, Icons.Rounded.Link, Modifier.weight(1f),
                         if (connection.connected) DashboardTone.GOOD else DashboardTone.WARN)
-                    ModernMetric("Transport", when {
+                    HomeMetric("Transport", when {
                         connection.tcpConnected -> "TCP"
                         connection.connected -> "TLS"
                         else -> "—"
                     }, Icons.Rounded.SettingsEthernet, Modifier.weight(1f))
-                    ModernMetric("Discovery", if (connection.scanning) "Scan" else "Idle",
+                    HomeMetric("Discovery", if (connection.scanning) "Scan" else "Idle",
                         Icons.Rounded.Radar, Modifier.weight(1f), DashboardTone.NEUTRAL)
                 }
                 Text(connection.message, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
 
         AdbHomeSetupCard()
 
-        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO, compact = true) {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 ModernSectionHeader(
                     title = "Shizuku manager", icon = Icons.Rounded.Security,
                     tone = DashboardTone.INFO,
@@ -285,17 +286,18 @@ private fun HomePage(modifier: Modifier) {
                         shizuku.starting || shizuku.stopping -> DashboardTone.WARN
                         else -> DashboardTone.ERROR
                     },
+                    compact = true,
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    ModernMetric("Binder", if (shizuku.serviceReady) "Active" else "Offline",
+                    HomeMetric("Binder", if (shizuku.serviceReady) "Active" else "Offline",
                         Icons.Rounded.Dns, Modifier.weight(1f),
                         if (shizuku.serviceReady) DashboardTone.GOOD else DashboardTone.WARN)
-                    ModernMetric("Shell", if (shizuku.serviceReady) "2000" else "—",
+                    HomeMetric("Shell", if (shizuku.serviceReady) "2000" else "—",
                         Icons.Rounded.VerifiedUser, Modifier.weight(1f),
                         if (shizuku.serviceReady) DashboardTone.GOOD else DashboardTone.NEUTRAL)
-                    ModernMetric("Clients", appCounts?.first?.toString() ?: "—",
+                    HomeMetric("Clients", appCounts?.first?.toString() ?: "—",
                         Icons.Rounded.Apps, Modifier.weight(1f))
-                    ModernMetric("Grants", appCounts?.second?.toString() ?: "—",
+                    HomeMetric("Grants", appCounts?.second?.toString() ?: "—",
                         Icons.Rounded.Key, Modifier.weight(1f))
                 }
                 Row(Modifier.fillMaxWidth(),
@@ -330,8 +332,11 @@ private fun HomePage(modifier: Modifier) {
                 ) {
                     Text(if (helperTest.running) "Testing LocalHelper…" else "Test LocalHelper")
                 }
-                Text(helperTest.message, style = MaterialTheme.typography.bodySmall)
-                Text(
+                if (helperTest.running || helperTest.message != "LocalHelper not tested") {
+                    Text(helperTest.message, style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (!shizuku.serviceReady || shizuku.manuallyStopped) Text(
                     if (shizuku.manuallyStopped) "Automatic startup paused until Restart."
                     else "Automatically starts when ADB verifies shell UID 2000.",
                     style = MaterialTheme.typography.bodySmall,
@@ -354,8 +359,8 @@ private fun HomePage(modifier: Modifier) {
             }
         }
 
-        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.GOOD) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ModernPanel(Modifier.fillMaxWidth(), DashboardTone.GOOD, compact = true) {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 ModernSectionHeader(
                     title = "Android permissions",
                     subtitle = DashboardPresentation.permissionSummary(
@@ -365,7 +370,8 @@ private fun HomePage(modifier: Modifier) {
                     status = if (permissions.finished)
                         permissions.granted.size.toString() + " granted" else "Checking",
                     statusTone = if (permissions.finished && permissions.unavailable.isEmpty())
-                        DashboardTone.GOOD else DashboardTone.WARN
+                        DashboardTone.GOOD else DashboardTone.WARN,
+                    compact = true,
                 )
                 if (!permissions.finished) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -407,6 +413,8 @@ private fun HomePage(modifier: Modifier) {
                 }
             }
         }
+        AndroidAutoInstallerCard()
+
     }
 }
 
