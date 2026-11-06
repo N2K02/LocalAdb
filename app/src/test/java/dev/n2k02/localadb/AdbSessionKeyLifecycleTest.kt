@@ -61,7 +61,7 @@ class AdbSessionKeyLifecycleTest {
 
     @Test fun timeoutRetiresManagerAndReconnectionReusesHealthyVerifiedSession() {
         val s = file("AdbTransport.kt")
-        val timeout = s.substringAfter("val watchdog = launch {")
+        val timeout = s.substringAfter("val watchdog = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {")
             .substringBefore("session = session ?:")
         assertTrue(timeout.contains("mgr.disconnect()"))
         assertTrue(timeout.contains("if (manager === mgr) manager = null"))
