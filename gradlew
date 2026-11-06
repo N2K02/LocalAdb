@@ -2,7 +2,7 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 JAR="$ROOT/gradle/wrapper/gradle-wrapper.jar"
-EXPECTED="1b33c55baabb587c669f562ae36f953de2481846"
+EXPECTED="9fa7f288283f81eec4952784c271abd7e0938dee"
 if [ ! -s "$JAR" ]; then
   mkdir -p "$(dirname "$JAR")"
   TEMP="$JAR.download.$$"
