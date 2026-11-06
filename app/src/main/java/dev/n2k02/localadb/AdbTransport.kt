@@ -221,21 +221,37 @@ object AdbTransport {
         val mgr = manager ?: error("ADB connection is not established")
         check(mgr.isConnected) { "ADB connection lost" }
         var session: ShellSession? = shell
-        val watchdog = launch {
+        // Cancellation must not cancel the watchdog before a native
+                    // readLine/openStream unblocks; its deadline owns teardown.
+                    val watchdog = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             delay(timeoutMs)
             Log.w(TAG, "ADB shell command timed out")
             runCatching { session?.close() }
             runCatching { mgr.disconnect() }
-            if (manager === mgr) manager = null
-            lastKnownConnected = false
-            shell = null
+            synchronized(this@AdbTransport) {
+                // A timed-out old command must not reset a newly verified session.
+                if (manager === mgr) {
+                    manager = null
+                    lastKnownConnected = false
+                    shell = null
+                } else if (shell === session) shell = null
+            }
         }
         try {
             session = session ?: ShellSession(mgr.openStream(SHELL_SERVICE)).also { shell = it }
             session!!.run(command)
         } catch (failure: Throwable) {
             runCatching { session?.close() }
-            shell = null
+            synchronized(this@AdbTransport) {
+                if (manager === mgr) {
+                    manager = null
+                    lastKnownConnected = false
+                    shell = null
+                } else if (shell === session) shell = null
+            }
+            // Treat Stream closed as a failed transport, not as a healthy
+            // connection with one bad command. Recovery re-verifies UID 2000.
+            runCatching { mgr.disconnect() }
             throw failure
         } finally {
             watchdog.cancel()
@@ -279,6 +295,8 @@ object AdbTransport {
      * back. It is random per session so no command's own output can collide.
      */
     private class ShellSession(private val stream: AdbStream) {
+        @Volatile private var running = false
+        @Volatile private var closing = false
         private val marker = "__localadb_" + java.util.UUID.randomUUID().toString().take(12) + "__"
         private val out = stream.openOutputStream()
         private val reader = stream.openInputStream().bufferedReader()
@@ -309,6 +327,9 @@ object AdbTransport {
         }
 
         fun run(command: String): String {
+            check(!closing) { "ADB shell is closing" }
+            running = true
+            try {
             val begin = "$marker-BEGIN"
             val end = "$marker-END"
 
@@ -377,13 +398,20 @@ object AdbTransport {
                 userCompletionMarker?.let { sb.appendLine(it) }
             }
             return sb.toString().trimEnd()
+            } finally {
+                running = false
+                // Never close a BufferedReader from the watchdog while a
+                // concurrent readLine holds its internal lock.
+                if (closing) runCatching { reader.close() }
+            }
         }
 
         fun close() {
+            closing = true
             // Close underlying stream first to release blocked readers.
             runCatching { if (!stream.isClosed) stream.close() }
-            runCatching { reader.close() }
             runCatching { out.close() }
+            if (!running) runCatching { reader.close() }
         }
 
         private companion object {

@@ -46,6 +46,7 @@ internal object AdbEngine {
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connectionMutex = Mutex()
     private var watchdog: Job? = null
+    private var discoveryTimeoutJob: Job? = null
     private var active = false
     private var nsd: NsdManager? = null
     private var wifiLock: WifiManager.MulticastLock? = null
@@ -65,7 +66,7 @@ internal object AdbEngine {
         active = true
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         AdbRecoveryWorker.schedule(app)
-        startWatchdog(app)
+        if (AdbSettings.get(app, AdbSettings.Option.WATCHDOG)) startWatchdog(app)
         retry(app)
     }
 
@@ -250,7 +251,7 @@ internal object AdbEngine {
             }
         }
         // A bounded scan avoids holding a Wi-Fi multicast lock indefinitely.
-        scope.launch {
+        discoveryTimeoutJob = scope.launch {
             delay(180_000L)
             if (current == generation && !status.value.connected) {
                 stopDiscovery()
@@ -293,6 +294,8 @@ internal object AdbEngine {
     }
 
     private fun stopDiscovery() {
+        discoveryTimeoutJob?.cancel()
+        discoveryTimeoutJob = null
         ++generation
         val mgr = nsd
         if (mgr != null) {
@@ -310,6 +313,10 @@ internal object AdbEngine {
 
     private fun startWatchdog(context: Context) {
         watchdog?.cancel()
+        if (!active || !AdbSettings.get(context, AdbSettings.Option.WATCHDOG)) {
+            watchdog = null
+            return
+        }
         watchdog = scope.launch {
             while (isActive && active && !AdbSettings.stopped(context)) {
                 delay(45_000L)
