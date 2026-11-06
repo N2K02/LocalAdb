@@ -228,9 +228,14 @@ object AdbTransport {
             Log.w(TAG, "ADB shell command timed out")
             runCatching { session?.close() }
             runCatching { mgr.disconnect() }
-            if (manager === mgr) manager = null
-            lastKnownConnected = false
-            shell = null
+            synchronized(this@AdbTransport) {
+                // A timed-out old command must not reset a newly verified session.
+                if (manager === mgr) {
+                    manager = null
+                    lastKnownConnected = false
+                    shell = null
+                } else if (shell === session) shell = null
+            }
         }
         try {
             session = session ?: ShellSession(mgr.openStream(SHELL_SERVICE)).also { shell = it }
