@@ -221,7 +221,9 @@ object AdbTransport {
         val mgr = manager ?: error("ADB connection is not established")
         check(mgr.isConnected) { "ADB connection lost" }
         var session: ShellSession? = shell
-        val watchdog = launch {
+        // Cancellation must not cancel the watchdog before a native
+                    // readLine/openStream unblocks; its deadline owns teardown.
+                    val watchdog = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             delay(timeoutMs)
             Log.w(TAG, "ADB shell command timed out")
             runCatching { session?.close() }
