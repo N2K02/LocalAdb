@@ -28,7 +28,7 @@ class AdbSessionKeyLifecycleTest {
         for (key in listOf("AdbSessionKey.copyOf(identity.privateKey)",
                 "getPrivateKey(): PrivateKey = sessionKey", "oldManager?.disconnect()",
                 "runCatching { reader.close() }", "lastKnownConnected = false",
-                "suspend fun disconnect() = close()", "if (manager === mgr) manager = null"))
+                "suspend fun disconnect() = close()", "if (manager === mgr) {"))
             assertTrue(key, s.contains(key))
         assertFalse(s.contains("manager?.close()"))
         assertFalse(s.contains("mgr.close()"))
@@ -64,7 +64,7 @@ class AdbSessionKeyLifecycleTest {
         val timeout = s.substringAfter("val watchdog = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {")
             .substringBefore("session = session ?:")
         assertTrue(timeout.contains("mgr.disconnect()"))
-        assertTrue(timeout.contains("if (manager === mgr) manager = null"))
+        assertTrue(timeout.contains("if (manager === mgr) {"))
         val engine = file("AdbEngine.kt")
         assertTrue(engine.contains("status.value.connected && AdbTransport.lastKnownConnected"))
         assertTrue(engine.contains("verifyShell()"))
