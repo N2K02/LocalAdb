@@ -7,7 +7,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -18,6 +17,7 @@ import androidx.compose.ui.unit.dp
 internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val state by AdbEngine.status.collectAsState()
+    var note by remember { mutableStateOf("") }
     var autoPair by remember { mutableStateOf(AdbSettings.get(context, AdbSettings.Option.AUTO_PAIR)) }
     val enabledServices = remember {
         runCatching {
@@ -61,13 +61,22 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
                 ToggleLine(AdbSettings.Option.TCP_5555,
                     "Keep ADB without Wi-Fi (TCP/5555)",
                     "Keeps ADB available without Wi-Fi. TCP/5555 may be " +
-                        "reachable by devices on your network.")
+                        "reachable by devices on your network.",
+                    onChanged = { enabled ->
+                        note = if (enabled) "Automatic TCP/5555 enabled for the next verified connection."
+                        else "Automatic TCP/5555 disabled. If the listener was open, closing was requested."
+                    })
                 if (state.connected && state.tcpConnected) {
-                    OutlinedButton(onClick = { AdbEngine.disableTcp(context) },
+                    OutlinedButton(onClick = {
+                        AdbEngine.disableTcp(context)
+                        note = "Requested TCP/5555 shutdown. Verify connection status before relying on closure."
+                    },
                         modifier = Modifier.fillMaxWidth()) {
                         Text("Disable TCP/5555")
                     }
                 }
+                if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
