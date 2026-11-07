@@ -22,7 +22,16 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
     val state by AdbEngine.status.collectAsState()
     var note by remember { mutableStateOf("") }
     var autoPair by remember { mutableStateOf(AdbSettings.get(context, AdbSettings.Option.AUTO_PAIR)) }
-    val enabledServices = remember {
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var resumeTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) resumeTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val enabledServices = remember(resumeTick) {
         runCatching {
             Settings.Secure.getString(context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
