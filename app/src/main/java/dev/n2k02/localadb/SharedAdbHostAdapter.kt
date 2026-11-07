@@ -73,7 +73,10 @@ internal object SharedAdbHostAdapter {
             AdbSettings.get(app, AdbSettings.Option.valueOf(option.name))
         override fun setEnabled(option: AdbOption, enabled: Boolean) {
             AdbSettings.set(app, AdbSettings.Option.valueOf(option.name), enabled)
-            if (option == AdbOption.WATCHDOG) AdbRecoveryWorker.schedule(app)
+            if (option == AdbOption.WATCHDOG) {
+                AdbRecoveryWorker.schedule(app)
+                AdbEngine.updateHelperRecovery(app, enabled)
+            }
         }
         override fun manuallyStopped() = AdbSettings.stopped(app)
         override fun setManuallyStopped(stopped: Boolean) = AdbSettings.setStopped(app, stopped)

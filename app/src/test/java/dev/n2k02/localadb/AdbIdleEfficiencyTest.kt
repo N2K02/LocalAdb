@@ -18,7 +18,11 @@ class AdbIdleEfficiencyTest {
         assertFalse(engine.contains("startWatchdog("))
         assertFalse(engine.contains("startDiscovery("))
         val adapter = source("SharedAdbHostAdapter.kt")
-        assertTrue(adapter.contains("if (option == AdbOption.WATCHDOG) AdbRecoveryWorker.schedule(app)"))
+        assertTrue(adapter.contains("AdbRecoveryWorker.schedule(app)"))
+        assertTrue(adapter.contains("AdbEngine.updateHelperRecovery(app, enabled)"))
+        assertTrue(engine.contains("NativeShizukuManager.maybeRecover(app)"))
+        assertTrue(engine.contains("delay(120_000L)"))
+        assertTrue(engine.contains("shared.state.value.connected"))
         assertTrue(adapter.contains("AdbCoreRegistry.install(it)"))
     }
 
@@ -26,6 +30,7 @@ class AdbIdleEfficiencyTest {
         val engine = source("AdbEngine.kt")
         assertTrue(engine.contains("observer?.cancel()"))
         assertTrue(engine.contains("scope.cancel()"))
+        assertTrue(engine.contains("helperRecovery?.cancel()"))
         assertTrue(engine.contains("AdbRecoveryWorker.cancel(app)"))
         assertTrue(engine.contains("withContext(NonCancellable + Dispatchers.IO)"))
         assertTrue(engine.contains("SharedAdbHostAdapter.shutdown()"))

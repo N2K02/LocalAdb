@@ -16,6 +16,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -41,6 +43,7 @@ internal object AdbEngine {
     val status = MutableStateFlow(AdbStatus())
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var observer: Job? = null
+    private var helperRecovery: Job? = null
     @Volatile private var active = false
     private var ownedCore: AdbCore? = null
 
@@ -87,7 +90,25 @@ internal object AdbEngine {
             shared.acquireService()
         }
         AdbRecoveryWorker.schedule(app)
+        updateHelperRecovery(app, AdbSettings.get(app, AdbSettings.Option.WATCHDOG))
         if (explicit) retry(app)
+    }
+
+    /** Shizuku is app-specific, not a second ADB watchdog. ADB transport and
+     * UID checks remain exclusively in AdbCore; this only checks Binder health.
+     * Keep it alive for the service, independently from Settings visibility. */
+    @Synchronized internal fun updateHelperRecovery(context: Context, enabled: Boolean) {
+        helperRecovery?.cancel()
+        helperRecovery = null
+        val app = context.applicationContext
+        if (!enabled || !active || AdbSettings.stopped(app)) return
+        val shared = ownedCore ?: return
+        helperRecovery = scope.launch {
+            while (isActive && !AdbSettings.stopped(app)) {
+                delay(120_000L)
+                if (shared.state.value.connected) NativeShizukuManager.maybeRecover(app)
+            }
+        }
     }
 
     fun retry(context: Context) {
@@ -158,6 +179,8 @@ internal object AdbEngine {
         active = false
         observer?.cancel()
         observer = null
+        helperRecovery?.cancel()
+        helperRecovery = null
         scope.cancel()
         AdbRecoveryWorker.cancel(app)
         withContext(NonCancellable + Dispatchers.IO) {
