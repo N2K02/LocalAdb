@@ -16,5 +16,9 @@ class SharedAdbHostAdapterContractTest {
         assertTrue(src.contains("AdbSettings."))
         assertTrue(src.contains("manuallyStopped()"))
         assertTrue(src.contains("LibAdbWire"))
+        assertTrue(src.contains("AdbCoreRegistry.install(it)"))
+        assertTrue(src.contains("AdbCoreRegistry.uninstall(it)"))
+        assertTrue(src.contains("it.quit()"))
+        assertTrue(src.contains("NativeShizukuManager.start(app)"))
     }
 }
