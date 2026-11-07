@@ -25,7 +25,7 @@ class AdbSettingsParityContractTest {
         assertTrue(code("LocalAdbScreen.kt").contains("AdbHomeSetupCard()"))
         val setup = code("AdbHomeSetupCard.kt")
         assertTrue(setup.contains("AdbPageLifecycle(adb)"))
-        assertTrue(setup.contains("AdbHomeSetupPage(adb)"))
+        assertTrue(setup.contains("AdbHomeSetupPage(adb, accessibilityEnabled"))
         assertTrue(setup.contains("state.connected"))
     }
 
