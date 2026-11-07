@@ -16,5 +16,7 @@ internal fun AdbHomeSetupCard() {
     AdbPageLifecycle(adb)
     val state by adb.state.collectAsState()
     if (state.connected) return
-    AdbHomeSetupPage(adb)
+    AdbHomeSetupPage(adb, accessibilityEnabled =
+        dev.n2k02.adb.core.SharedAdbPairingAccessibilityService.isEnabled(
+            context, AdbPairingAccessibilityService::class.java))
 }

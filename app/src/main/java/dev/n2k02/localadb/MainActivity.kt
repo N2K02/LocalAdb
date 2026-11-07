@@ -1,8 +1,7 @@
 package dev.n2k02.localadb
 
 import android.os.Bundle
-import android.os.Build
-import android.content.pm.PackageManager
+import dev.n2k02.adb.core.AdbNetworkAccess
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,7 +17,7 @@ class MainActivity : ComponentActivity() {
     // Android 17 blocks local discovery/TCP for target 37 until the user has
     // approved its Nearby devices permission. Manifest declaration alone is
     // insufficient; never launch connection attempts before approval.
-    private val localNetworkPermission = "android.permission.ACCESS_LOCAL_NETWORK"
+    private val localNetworkPermission = AdbNetworkAccess.PERMISSION
     private val requestLocalNetwork = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -32,8 +31,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun canUseLocalNetwork(): Boolean = Build.VERSION.SDK_INT < 37 ||
-        checkSelfPermission(localNetworkPermission) == PackageManager.PERMISSION_GRANTED
+    private fun canUseLocalNetwork(): Boolean = AdbNetworkAccess.granted(this)
 
     private fun startAdbWhenPermitted() {
         if (canUseLocalNetwork()) {

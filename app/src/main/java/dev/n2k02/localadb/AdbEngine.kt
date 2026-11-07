@@ -117,19 +117,6 @@ internal object AdbEngine {
         scope.launch { shared.retry(auto = false) }
     }
 
-    /** Called only for an Android Settings code, never persisted. */
-    fun submitPairingCode(context: Context, code: String) {
-        val port = status.value.pairingPort ?: return
-        if (!code.matches(Regex("[0-9]{6}"))) return
-        val shared = ownedCore ?: return
-        if (AdbSettings.stopped(context)) return
-        scope.launch {
-            if (shared.pair(port, code)) {
-                status.value.tlsPort?.let { shared.connectTls(it) }
-            }
-        }
-    }
-
     fun preferencesChanged(context: Context) {
         val app = context.applicationContext
         AdbRecoveryWorker.schedule(app)

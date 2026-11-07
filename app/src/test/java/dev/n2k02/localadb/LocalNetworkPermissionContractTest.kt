@@ -9,10 +9,10 @@ class LocalNetworkPermissionContractTest {
         val base = listOf(File("app/src/main/java/dev/n2k02/localadb"),
             File("src/main/java/dev/n2k02/localadb")).first { it.isDirectory }
         val activity = base.resolve("MainActivity.kt").readText()
-        assertTrue(activity.contains("android.permission.ACCESS_LOCAL_NETWORK"))
+        assertTrue(activity.contains("AdbNetworkAccess.PERMISSION"))
         assertTrue(activity.contains("ActivityResultContracts.RequestPermission()"))
-        assertTrue(activity.contains("Build.VERSION.SDK_INT < 37"))
-        assertTrue(activity.contains("checkSelfPermission(localNetworkPermission)"))
+        assertTrue(activity.contains("AdbNetworkAccess.granted(this)"))
+        assertTrue(activity.contains("AdbNetworkAccess.granted(this)"))
         assertTrue(activity.contains("if (canUseLocalNetwork())"))
         assertTrue(activity.contains("requestLocalNetwork.launch(localNetworkPermission)"))
         assertTrue(activity.contains("AdbEngine.start(applicationContext, explicit = true)"))

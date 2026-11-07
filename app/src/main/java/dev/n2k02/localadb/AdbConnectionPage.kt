@@ -38,9 +38,9 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
     // Reuse the already configured LocalAdb accessibility reader, not a second
     // service declared by a dependency.
     val accessibilityEnabled = remember(resumeTick) {
-        Settings.Secure.getString(context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
-            .contains("AdbPairingAccessibilityService", ignoreCase = true)
+        dev.n2k02.adb.core.SharedAdbPairingAccessibilityService.isEnabled(
+            context, AdbPairingAccessibilityService::class.java
+        )
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         AdbConnectionSettingsPage(
