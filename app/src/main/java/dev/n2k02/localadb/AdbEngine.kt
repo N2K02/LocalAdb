@@ -62,6 +62,12 @@ internal object AdbEngine {
         tcpConnected = s.connected && s.transport == AdbTransportMode.LOCAL_TCP_5555,
     )
 
+    /** Host hooks run concurrently with StateFlow observers. Publish the
+     * verified state before Shizuku/permission checks inspect the dashboard. */
+    internal fun publishVerified(adb: AdbCore) {
+        status.value = statusOf(adb.state.value)
+    }
+
     @Synchronized fun start(context: Context, explicit: Boolean = false) {
         val app = context.applicationContext
         if (explicit) AdbSettings.setStopped(app, false)

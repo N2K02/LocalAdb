@@ -43,7 +43,9 @@ internal object SharedAdbHostAdapter {
         val hooks = object : AdbHostHooks {
             override suspend fun onVerifiedShell() {
                 // This callback runs outside the shared connection mutex.
-                // Shizuku must start even if optional permission grants fail.
+                // StateFlow collection is asynchronous: publish verified UID
+                // before Shizuku and permission bootstrap check legacy status.
+                AdbEngine.publishVerified(adb)
                 NativeShizukuManager.start(app)
                 AdbPermissionBootstrap.configure(app)
             }

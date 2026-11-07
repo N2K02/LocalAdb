@@ -20,5 +20,10 @@ class SharedAdbHostAdapterContractTest {
         assertTrue(src.contains("AdbCoreRegistry.uninstall(it)"))
         assertTrue(src.contains("it.quit()"))
         assertTrue(src.contains("NativeShizukuManager.start(app)"))
+        assertTrue(src.contains("AdbEngine.publishVerified(adb)"))
+        assertTrue(src.indexOf("AdbEngine.publishVerified(adb)") <
+            src.indexOf("NativeShizukuManager.start(app)"))
+        val engine = root.resolve("src/main/java/dev/n2k02/localadb/AdbEngine.kt").readText()
+        assertTrue(engine.contains("status.value = statusOf(adb.state.value)"))
     }
 }
