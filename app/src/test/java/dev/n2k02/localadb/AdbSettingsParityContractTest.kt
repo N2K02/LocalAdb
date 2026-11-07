@@ -12,7 +12,8 @@ class AdbSettingsParityContractTest {
 
     @Test fun settingsContainsOnlyVrecPairingAndSecurityCards() {
         val settings = code("AdbConnectionPage.kt")
-        assertEquals(2, settings.split("Card(Modifier.fillMaxWidth())").size - 1)
+        assertEquals(2, settings.split("shape = RoundedCornerShape(28.dp)").size - 1)
+        assertEquals(2, settings.split("containerColor = MaterialTheme.colorScheme.surfaceContainerLow").size - 1)
         for (text in listOf("Pairing & recovery", "Connection & security",
             "Auto-detect pairing code", "Connection watchdog", "Start on boot",
             "Restore after restart", "Keep ADB without Wi-Fi (TCP/5555)",
