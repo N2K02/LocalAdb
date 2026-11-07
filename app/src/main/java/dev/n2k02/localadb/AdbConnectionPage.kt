@@ -33,9 +33,8 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Pairing & recovery", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
                 ToggleLine(AdbSettings.Option.AUTO_PAIR, "Auto-detect pairing code",
                     "Read the Android pairing dialog with Accessibility.",
                     onChanged = { autoPair = it })
@@ -57,9 +56,8 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
         }
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Connection & security", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
                 ToggleLine(AdbSettings.Option.RESTORE_AFTER_RESTART, "Restore after restart",
                     "Restore Wireless debugging after reboot, using saved pairing. " +
                         "Requires Android permission; never overrides a manual off setting.")
