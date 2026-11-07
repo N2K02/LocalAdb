@@ -3,6 +3,9 @@ package dev.n2k02.localadb
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -28,9 +31,10 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Card(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Pairing & recovery", style = MaterialTheme.typography.titleMedium)
+                Text("Pairing & recovery", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 ToggleLine(AdbSettings.Option.AUTO_PAIR, "Auto-detect pairing code",
                     "Read the Android pairing dialog with Accessibility.",
@@ -51,9 +55,10 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
                     "Try to restore the helper after restarting and unlocking.")
             }
         }
-        Card(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Connection & security", style = MaterialTheme.typography.titleMedium)
+                Text("Connection & security", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 ToggleLine(AdbSettings.Option.RESTORE_AFTER_RESTART, "Restore after restart",
                     "Restore Wireless debugging after reboot, using saved pairing. " +
@@ -87,14 +92,20 @@ private fun ToggleLine(option: AdbSettings.Option, title: String, description: S
     onChanged: ((Boolean) -> Unit)? = null) {
     val context = LocalContext.current
     var checked by remember(option) { mutableStateOf(AdbSettings.get(context, option)) }
-    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp),
+    Row(Modifier.fillMaxWidth().clickable {
+        val next = !checked
+        checked = next
+        AdbSettings.set(context, option, next)
+        onChanged?.invoke(next)
+        AdbEngine.preferencesChanged(context)
+        if (option == AdbSettings.Option.TCP_5555 && !next) AdbEngine.disableTcp(context)
+    },
         verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(description, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Spacer(Modifier.width(12.dp))
         Switch(checked = checked, onCheckedChange = {
             checked = it
             AdbSettings.set(context, option, it)
