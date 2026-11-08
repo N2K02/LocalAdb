@@ -10,6 +10,15 @@ class AdbPolicyTest {
         currentBoot = 16, verifiedBoot = 15
     )
 
+    @Test fun activityRecreationCannotClearAdbStop() {
+        val activity = listOf(java.io.File("app/src/main/java/dev/n2k02/localadb/MainActivity.kt"),
+            java.io.File("../app/src/main/java/dev/n2k02/localadb/MainActivity.kt"))
+            .first { it.isFile }.readText()
+        assertTrue(activity.contains("freshLaunch = savedInstanceState == null"))
+        assertTrue(activity.contains("if (freshLaunch) AdbSettings.markForegroundOpened(applicationContext)"))
+        assertTrue(activity.contains("explicit = freshLaunch"))
+    }
+
     @Test fun bootStartupIsIndependentOfPeriodicWatchdog() {
         assertTrue(AdbWorkerStartPolicy.shouldStart(true, false))
         assertTrue(AdbWorkerStartPolicy.shouldStart(true, true))
