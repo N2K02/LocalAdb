@@ -12,6 +12,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
@@ -26,12 +28,33 @@ internal object LocalHelperDiagnostics {
     fun start(context: Context) {
         // A cancelled test must finish unbinding before another uses the same service tag.
         if (job?.isCompleted == false) return
-        state.value = Status(running = true, message = "Connecting LocalHelper…")
+        state.value = Status(running = true, message = "Waiting for verified ADB UID 2000…")
         job = scope.launch {
             try {
-                check(Shizuku.pingBinder() && Shizuku.getUid() == 2000) {
-                    "Shizuku shell Binder is unavailable"
+                // Never bind a Shizuku user service while local ADB is still
+                // pairing, reconnecting or advertising an unverified identity.
+                val verified = withTimeoutOrNull(30_000L) {
+                    AdbEngine.status.first { it.connected && AdbTransport.isConnected }
+                } != null
+                check(verified) { "ADB shell UID 2000 not verified within 30s" }
+                state.value = Status(running = true, message = "Checking Shizuku UID 2000…")
+                val managerReady = withTimeoutOrNull(30_000L) {
+                    while (true) {
+                        if (!AdbEngine.status.value.connected || !AdbTransport.isConnected) {
+                            error("ADB disconnected before Shizuku became ready")
+                        }
+                        if (NativeShizukuManager.state.value.serviceReady &&
+                            runCatching { Shizuku.pingBinder() && Shizuku.getUid() == 2000 }
+                                .getOrDefault(false)) break
+                        kotlinx.coroutines.delay(250L)
+                    }
+                    true
+                } == true
+                check(managerReady) { "Shizuku UID 2000 not ready within 30s" }
+                check(AdbEngine.status.value.connected && AdbTransport.isConnected) {
+                    "ADB disconnected before helper binding"
                 }
+                state.value = Status(running = true, message = "Connecting LocalHelper…")
                 val message = LocalHelperProbe.run(
                     UserServiceConnection(context.applicationContext), UUID.randomUUID().toString())
                 state.value = Status(message = message)
@@ -53,6 +76,7 @@ internal object LocalHelperDiagnostics {
         private val connected = CompletableDeferred<IBinder>()
         private var binder: IBinder? = null
         private var bindingRequested = false
+        private var closed = false
         private val args = Shizuku.UserServiceArgs(ComponentName(context, LocalHelperService::class.java))
             .tag("localhelper-connection-test")
             .version(1)
@@ -60,6 +84,7 @@ internal object LocalHelperDiagnostics {
             .daemon(false)
         private val callback = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                if (closed) return
                 if (service == null || !service.pingBinder()) {
                     connected.completeExceptionally(IllegalStateException("Helper Binder is dead"))
                 } else {
@@ -69,11 +94,14 @@ internal object LocalHelperDiagnostics {
             }
             override fun onServiceDisconnected(name: ComponentName?) {
                 binder = null
-                connected.completeExceptionally(IllegalStateException("Helper disconnected"))
+                if (!closed) connected.completeExceptionally(IllegalStateException("Helper disconnected"))
             }
         }
 
         override suspend fun connect() {
+            check(!closed && AdbEngine.status.value.connected && AdbTransport.isConnected) {
+                "Verified ADB UID 2000 connection lost"
+            }
             bindingRequested = true
             Shizuku.bindUserService(args, callback)
             binder = connected.await()
@@ -99,8 +127,12 @@ internal object LocalHelperDiagnostics {
         }
 
         override suspend fun close() {
-            if (bindingRequested) Shizuku.unbindUserService(args, callback, true)
+            closed = true
             binder = null
+            if (bindingRequested) {
+                bindingRequested = false
+                Shizuku.unbindUserService(args, callback, true)
+            }
         }
     }
 }
