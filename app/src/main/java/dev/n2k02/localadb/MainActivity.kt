@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         LiveUpdater.init(applicationContext)
+        AdbSettings.markForegroundOpened(applicationContext)
         startAdbWhenPermitted()
         enableEdgeToEdge()
         setContent { N2K02Theme { LocalAdbScreen(onQuit = ::quit) } }
