@@ -10,6 +10,13 @@ class AdbPolicyTest {
         currentBoot = 16, verifiedBoot = 15
     )
 
+    @Test fun disabledBootStartOnlyRecoversAfterForegroundOpenInSameBoot() {
+        assertFalse(AdbSettings.backgroundRecoveryAllowed(false, 17, 16))
+        assertFalse(AdbSettings.backgroundRecoveryAllowed(false, 17, -1))
+        assertFalse(AdbSettings.backgroundRecoveryAllowed(false, -1, -1))
+        assertTrue(AdbSettings.backgroundRecoveryAllowed(false, 17, 17))
+        assertTrue(AdbSettings.backgroundRecoveryAllowed(true, 17, -1))
+    }
     @Test fun onlyRestoreAfterBootChangeAndExplicitOptIn() {
         assertEquals(RestorePolicy.Decision.RESTORE, RestorePolicy.decide(ready()))
         assertEquals(RestorePolicy.Decision.NOT_ENABLED, RestorePolicy.decide(ready().copy(optedIn = false)))
