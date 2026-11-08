@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
 class AdbRecoveryWorker(context: Context, params: WorkerParameters): CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val app = applicationContext
-        if (AdbSettings.stopped(app)) return Result.success()
+        if (!AdbSettings.backgroundRecoveryAllowed(app)) return Result.success()
         if (inputData.getBoolean("boot", false)) {
             if (!AdbSettings.get(app, AdbSettings.Option.START_ON_BOOT)) return Result.success()
             // Give the Android debugging stack time to initialize after unlock.
