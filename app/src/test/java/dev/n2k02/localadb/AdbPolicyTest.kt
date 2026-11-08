@@ -10,6 +10,12 @@ class AdbPolicyTest {
         currentBoot = 16, verifiedBoot = 15
     )
 
+    @Test fun bootStartupIsIndependentOfPeriodicWatchdog() {
+        assertTrue(AdbWorkerStartPolicy.shouldStart(true, false))
+        assertTrue(AdbWorkerStartPolicy.shouldStart(true, true))
+        assertTrue(AdbWorkerStartPolicy.shouldStart(false, true))
+        assertFalse(AdbWorkerStartPolicy.shouldStart(false, false))
+    }
     @Test fun disabledBootStartOnlyRecoversAfterForegroundOpenInSameBoot() {
         assertFalse(AdbSettings.backgroundRecoveryAllowed(false, 17, 16))
         assertFalse(AdbSettings.backgroundRecoveryAllowed(false, 17, -1))
