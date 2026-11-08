@@ -18,13 +18,17 @@ class AdbRecoveryWorker(context: Context, params: WorkerParameters): CoroutineWo
     override suspend fun doWork(): Result {
         val app = applicationContext
         if (!AdbSettings.backgroundRecoveryAllowed(app)) return Result.success()
-        if (inputData.getBoolean("boot", false)) {
+        val bootRequest = inputData.getBoolean("boot", false)
+        if (bootRequest) {
             if (!AdbSettings.get(app, AdbSettings.Option.START_ON_BOOT)) return Result.success()
             // Give the Android debugging stack time to initialize after unlock.
             delay(3_000)
             AdbEngine.restoreAfterReboot(app)
         }
-        if (AdbSettings.get(app, AdbSettings.Option.WATCHDOG)) AdbEngine.start(app)
+        // Boot startup and periodic health monitoring are independent choices.
+        if (AdbWorkerStartPolicy.shouldStart(bootRequest,
+                AdbSettings.get(app, AdbSettings.Option.WATCHDOG)))
+            AdbEngine.start(app)
         return Result.success()
     }
 
@@ -60,4 +64,10 @@ class AdbBootReceiver : BroadcastReceiver() {
             intent.action == Intent.ACTION_MY_PACKAGE_REPLACED)
             AdbRecoveryWorker.onBoot(context.applicationContext)
     }
+}
+
+/** Pure policy: disabling periodic health monitoring must not disable boot startup. */
+internal object AdbWorkerStartPolicy {
+    fun shouldStart(bootRequest: Boolean, watchdogEnabled: Boolean): Boolean =
+        bootRequest || watchdogEnabled
 }
