@@ -10,6 +10,28 @@ class AdbPolicyTest {
         currentBoot = 16, verifiedBoot = 15
     )
 
+    @Test fun activityRecreationCannotClearAdbStop() {
+        val activity = listOf(java.io.File("app/src/main/java/dev/n2k02/localadb/MainActivity.kt"),
+            java.io.File("../app/src/main/java/dev/n2k02/localadb/MainActivity.kt"))
+            .first { it.isFile }.readText()
+        assertTrue(activity.contains("freshLaunch = savedInstanceState == null"))
+        assertTrue(activity.contains("if (freshLaunch) AdbSettings.markForegroundOpened(applicationContext)"))
+        assertTrue(activity.contains("explicit = freshLaunch"))
+    }
+
+    @Test fun bootStartupIsIndependentOfPeriodicWatchdog() {
+        assertTrue(AdbWorkerStartPolicy.shouldStart(true, false))
+        assertTrue(AdbWorkerStartPolicy.shouldStart(true, true))
+        assertTrue(AdbWorkerStartPolicy.shouldStart(false, true))
+        assertFalse(AdbWorkerStartPolicy.shouldStart(false, false))
+    }
+    @Test fun disabledBootStartOnlyRecoversAfterForegroundOpenInSameBoot() {
+        assertFalse(AdbSettings.backgroundRecoveryAllowed(false, 17, 16))
+        assertFalse(AdbSettings.backgroundRecoveryAllowed(false, 17, -1))
+        assertFalse(AdbSettings.backgroundRecoveryAllowed(false, -1, -1))
+        assertTrue(AdbSettings.backgroundRecoveryAllowed(false, 17, 17))
+        assertTrue(AdbSettings.backgroundRecoveryAllowed(true, 17, -1))
+    }
     @Test fun onlyRestoreAfterBootChangeAndExplicitOptIn() {
         assertEquals(RestorePolicy.Decision.RESTORE, RestorePolicy.decide(ready()))
         assertEquals(RestorePolicy.Decision.NOT_ENABLED, RestorePolicy.decide(ready().copy(optedIn = false)))

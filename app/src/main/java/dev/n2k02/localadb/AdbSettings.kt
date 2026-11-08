@@ -22,6 +22,25 @@ internal object AdbSettings {
     fun get(context: Context, option: Option) = prefs(context).getBoolean(key(option), defaults(option))
     fun set(context: Context, option: Option, enabled: Boolean) =
         prefs(context).edit().putBoolean(key(option), enabled).apply()
+    private const val FOREGROUND_BOOT = "last_foreground_boot"
+
+    /** A persisted watchdog cannot start ADB after reboot when boot start is OFF.
+     * An explicit foreground launch enables recovery for the current boot only. */
+    fun markForegroundOpened(context: Context) {
+        val current = boot(context)
+        if (current >= 0) prefs(context).edit().putInt(FOREGROUND_BOOT, current).apply()
+    }
+
+    internal fun backgroundRecoveryAllowed(
+        startOnBoot: Boolean, currentBoot: Int, lastOpenedBoot: Int
+    ): Boolean = startOnBoot || (currentBoot >= 0 && currentBoot == lastOpenedBoot)
+
+    fun backgroundRecoveryAllowed(context: Context): Boolean =
+        !stopped(context) && backgroundRecoveryAllowed(
+            get(context, Option.START_ON_BOOT), boot(context),
+            prefs(context).getInt(FOREGROUND_BOOT, -1)
+        )
+
     fun stopped(context: Context) = prefs(context).getBoolean(STOPPED, false)
     fun setStopped(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(STOPPED, enabled).commit()

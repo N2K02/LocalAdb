@@ -58,20 +58,19 @@ class NativeShizukuManagerTest {
         assertTrue(file.contains("Shizuku.dispatchPermissionConfirmationResult"))
     }
 
-    @Test fun startsOnlyAfterAdbHasBeenVerifiedAndQuitStopsServerFirst() {
-        val engine = java.io.File(
-            "src/main/java/dev/n2k02/localadb/AdbEngine.kt"
-        ).readText()
-        val onVerified = engine.substringAfter("private suspend fun onVerified")
-            .substringBefore("fun submitPairingCode")
-        assertTrue(onVerified.contains("NativeShizukuManager.start(context)"))
-        assertTrue(onVerified.indexOf("shellUid = 2000") <
-            onVerified.indexOf("NativeShizukuManager.start(context)"))
-        val main = java.io.File(
-            "src/main/java/dev/n2k02/localadb/MainActivity.kt"
-        ).readText()
+    @Test fun verifiedSharedCoreStartsShizukuAndQuitStopsItFirst() {
+        val adapter = java.io.File("src/main/java/dev/n2k02/localadb/SharedAdbHostAdapter.kt").readText()
+        val hook = adapter.substringAfter("override suspend fun onVerifiedShell()")
+            .substringBefore("override suspend fun onRestoreAfterRestartChanged")
+        assertTrue(hook.contains("NativeShizukuManager.start(app)"))
+        assertTrue(hook.contains("AdbPermissionBootstrap.configure(app)"))
+        assertTrue(hook.indexOf("NativeShizukuManager.start(app)") <
+            hook.indexOf("AdbPermissionBootstrap.configure(app)"))
+        assertTrue(adapter.contains("AdbIdentity.getOrCreate(ctx)"))
+        val main = java.io.File("src/main/java/dev/n2k02/localadb/MainActivity.kt").readText()
         val quit = main.substringAfter("private fun quit()")
         assertTrue(quit.indexOf("NativeShizukuManager.shutdown") <
             quit.indexOf("AdbEngine.shutdown"))
     }
+
 }

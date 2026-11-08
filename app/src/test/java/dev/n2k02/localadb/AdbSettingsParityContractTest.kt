@@ -10,40 +10,36 @@ class AdbSettingsParityContractTest {
         return listOf(File(path), File("../" + path)).first { it.isFile }.readText()
     }
 
-    @Test fun settingsContainsOnlyVrecPairingAndSecurityCards() {
+    @Test fun settingsUsesOneCanonicalSharedPage() {
         val settings = code("AdbConnectionPage.kt")
-        assertEquals(2, settings.split("Card(Modifier.fillMaxWidth())").size - 1)
-        for (text in listOf("Pairing & recovery", "Connection & security",
-            "Auto-detect pairing code", "Connection watchdog", "Start on boot",
-            "Restore after restart", "Keep ADB without Wi-Fi (TCP/5555)",
-            "Disable TCP/5555", "Try to restore the helper after restarting and unlocking.",
-            "Requires Android permission; never overrides a manual off setting."))
-            assertTrue(text, settings.contains(text))
-        assertFalse(settings.contains("Connection status"))
-        assertFalse(settings.contains("Pair with this phone"))
-        assertFalse(settings.contains("Six-digit Android pairing code"))
-        assertFalse(settings.contains("Open Accessibility settings"))
+        assertTrue(settings.contains("AdbConnectionSettingsPage("))
+        assertTrue(settings.contains("SharedAdbHostAdapter.core(context)"))
+        assertTrue(settings.contains("AdbPairingAccessibilityService"))
+        assertTrue(settings.contains("Settings.ACTION_ACCESSIBILITY_SETTINGS"))
+        assertFalse(settings.contains("Pairing & recovery"))
+        assertFalse(settings.contains("Connection & security"))
+        assertFalse(settings.contains("private fun ToggleLine("))
     }
 
-    @Test fun pairingAndRetryAreOnHomeNotInSettings() {
-        val home = code("LocalAdbScreen.kt")
+    @Test fun pairingAndRetryLiveOnHomeSharedPage() {
+        assertTrue(code("LocalAdbScreen.kt").contains("AdbHomeSetupCard()"))
         val setup = code("AdbHomeSetupCard.kt")
-        assertTrue(home.contains("AdbHomeSetupCard()"))
-        assertTrue(setup.contains("Find / Retry"))
-        assertTrue(setup.contains("Pair with this phone"))
-        assertTrue(setup.contains("AdbEngine.submitPairingCode"))
-        assertTrue(setup.contains("AdbEngine.openDeveloperOptions"))
+        assertTrue(setup.contains("AdbPageLifecycle(adb)"))
+        assertTrue(setup.contains("AdbHomeSetupPage(adb, accessibilityEnabled"))
+        assertTrue(setup.contains("state.connected"))
     }
 
-    @Test fun healthyConnectionAndUid2000VerificationRequiredForRecovery() {
+    @Test fun shellStatusRequiresVerifiedSharedUid2000() {
         val transport = code("AdbTransport.kt")
-        assertTrue(transport.contains("lastKnownConnected = mgr.isConnected"))
-        assertTrue(transport.contains("lastKnownConnected = true"))
+        assertTrue(transport.contains("shared().execVerified(command, timeoutMs)"))
+        assertTrue(transport.contains("shared().execVerified(AdbConsoleProtocol.wrap(validated, marker), timeoutMs)"))
+        assertFalse(transport.contains("AbsAdbConnectionManager"))
         val engine = code("AdbEngine.kt")
-        assertTrue(engine.contains("if (connectTcp(app)) return@withLock"))
-        assertTrue(engine.contains("if (!isLocalPortListening()) return false"))
-        assertTrue(engine.contains("verifyShell()"))
-        assertTrue(engine.contains("\"2000\""))
-        assertTrue(engine.contains("AdbSettings.Option.TCP_5555"))
+        assertTrue(engine.contains("shellUid = if (s.connected) 2000 else null"))
+        assertTrue(engine.contains("s.transport == AdbTransportMode.LOCAL_TCP_5555"))
+        assertTrue(engine.contains("AdbPhase.VERIFIED -> Phase.CONNECTED"))
+        val adapter = code("SharedAdbHostAdapter.kt")
+        assertTrue(adapter.contains("AdbSettings.tlsPort(app)"))
+        assertTrue(adapter.contains("AdbSettings.paired(app)"))
     }
 }

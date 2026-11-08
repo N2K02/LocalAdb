@@ -69,15 +69,16 @@ class ShizukuLifecycleTest {
         assertTrue(s.contains("readFailureDiagnostics"))
     }
 
-    @Test fun adbVerificationStartsServerEvenWhenPermissionBootstrapIsUnavailable() {
-        val s = java.io.File("src/main/java/dev/n2k02/localadb/AdbEngine.kt").readText()
-        val verified = s.substringAfter("private suspend fun onVerified")
-            .substringBefore("fun submitPairingCode")
-        assertTrue(verified.indexOf("shellUid = 2000") <
-            verified.indexOf("NativeShizukuManager.start(context)"))
-        assertTrue(verified.indexOf("NativeShizukuManager.start(context)") <
-            verified.indexOf("AdbPermissionBootstrap.configure(context)"))
-        assertTrue(s.contains("NativeShizukuManager.maybeRecover(context)"))
+    @Test fun adbVerificationHooksStartServerBeforeOptionalPermissionGrants() {
+        val src = java.io.File("src/main/java/dev/n2k02/localadb/SharedAdbHostAdapter.kt").readText()
+        val callback = src.substringAfter("override suspend fun onVerifiedShell()")
+            .substringBefore("override suspend fun onRestoreAfterRestartChanged")
+        assertTrue(callback.contains("NativeShizukuManager.start(app)"))
+        assertTrue(callback.contains("AdbPermissionBootstrap.configure(app)"))
+        assertTrue(callback.indexOf("NativeShizukuManager.start(app)") <
+            callback.indexOf("AdbPermissionBootstrap.configure(app)"))
+        val engine = java.io.File("src/main/java/dev/n2k02/localadb/AdbEngine.kt").readText()
+        assertTrue(engine.contains("AdbPhase.VERIFIED -> Phase.CONNECTED"))
     }
 
     @Test fun providerStreamsOnlyTheBundledAbiMatchedStarterToShellUid2000() {

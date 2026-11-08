@@ -74,14 +74,13 @@ class AdbConsoleProtocolTest {
         assertTrue(history.snapshot().isEmpty())
     }
 
-    @Test fun transportRequiresLiveUid2000UnderSingleMutex() {
-        val code = java.io.File("src/main/java/dev/n2k02/localadb/AdbTransport.kt").readText()
-        val function = code.substringAfter("internal suspend fun execVerifiedUserCommand")
-            .substringBefore("private suspend fun runLocked")
-        assertTrue(function.contains("mutex.withLock"))
-        assertTrue(function.contains("runLocked(\"id -u\", 3_000)"))
-        assertTrue(function.contains("identity == \"2000\""))
-        assertTrue(function.contains("AdbConsoleProtocol.parse"))
-        assertTrue(code.contains("fun interruptUserShell()"))
+    @Test fun transportExecutesConsoleWithVerifiedSharedCoreAndExitMarker() {
+        val source = java.io.File("src/main/java/dev/n2k02/localadb/AdbTransport.kt").readText()
+        assertTrue(source.contains("shared().execVerified(AdbConsoleProtocol.wrap(validated, marker), timeoutMs)"))
+        assertTrue(source.contains("AdbConsoleProtocol.parse(response, marker)"))
+        assertTrue(source.contains("catch (cancelled: CancellationException)"))
+        assertTrue(source.contains("no legacy transport fallback"))
+        assertFalse(source.contains("AbsAdbConnectionManager"))
+        assertTrue(source.contains("fun interruptUserShell()"))
     }
 }
