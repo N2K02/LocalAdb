@@ -18,11 +18,12 @@ class MainActivity : ComponentActivity() {
     // approved its Nearby devices permission. Manifest declaration alone is
     // insufficient; never launch connection attempts before approval.
     private val localNetworkPermission = AdbNetworkAccess.PERMISSION
+    private var freshLaunch = false
     private val requestLocalNetwork = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            AdbEngine.start(applicationContext, explicit = true)
+            AdbEngine.start(applicationContext, explicit = freshLaunch)
         } else {
             AdbEngine.status.value = AdbStatus(
                 phase = Phase.NEEDS_HELP,
@@ -35,7 +36,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startAdbWhenPermitted() {
         if (canUseLocalNetwork()) {
-            AdbEngine.start(applicationContext, explicit = true)
+            AdbEngine.start(applicationContext, explicit = freshLaunch)
         } else {
             AdbEngine.status.value = AdbStatus(
                 phase = Phase.NEEDS_HELP,
@@ -48,7 +49,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         LiveUpdater.init(applicationContext)
-        AdbSettings.markForegroundOpened(applicationContext)
+        freshLaunch = savedInstanceState == null
+        if (freshLaunch) AdbSettings.markForegroundOpened(applicationContext)
         startAdbWhenPermitted()
         enableEdgeToEdge()
         setContent { N2K02Theme { LocalAdbScreen(onQuit = ::quit) } }
