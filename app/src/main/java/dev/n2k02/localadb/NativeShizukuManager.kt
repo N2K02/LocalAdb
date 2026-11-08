@@ -140,7 +140,11 @@ internal object NativeShizukuManager {
             }
             return
         }
-        if (!AdbEngine.status.value.connected || !AdbTransport.isConnected) return
+        if (!AdbEngine.status.value.connected || !AdbTransport.isConnected) {
+            state.update { it.copy(serviceReady = false, shellUid = null,
+                message = "Waiting for verified ADB shell UID 2000 before starting Shizuku…") }
+            return
+        }
         if (launch?.isActive == true) return
         if (state.value.serviceReady && binderReady(app)) return
         ensureScope()
@@ -181,6 +185,11 @@ internal object NativeShizukuManager {
         LocalHelperDiagnostics.cancel()
         val app = context.applicationContext
         setManuallyStopped(app, false)
+        if (!AdbEngine.status.value.connected || !AdbTransport.isConnected) {
+            state.update { it.copy(message =
+                "Waiting for verified ADB shell UID 2000 before restarting Shizuku…") }
+            return
+        }
         launch?.cancel()
         ensureScope()
         launch = scope.launch {
