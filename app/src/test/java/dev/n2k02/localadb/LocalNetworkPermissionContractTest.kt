@@ -15,7 +15,9 @@ class LocalNetworkPermissionContractTest {
         assertTrue(activity.contains("AdbNetworkAccess.granted(this)"))
         assertTrue(activity.contains("if (canUseLocalNetwork())"))
         assertTrue(activity.contains("requestLocalNetwork.launch(localNetworkPermission)"))
-        assertTrue(activity.contains("AdbEngine.start(applicationContext, explicit = true)"))
+        assertTrue(activity.contains("AdbEngine.start(applicationContext, explicit = freshLaunch)"))
+        assertTrue(activity.contains("freshLaunch = savedInstanceState == null"))
+        assertTrue(activity.contains("if (freshLaunch) AdbSettings.markForegroundOpened(applicationContext)"))
         assertFalse(activity.contains("super.onCreate(savedInstanceState)\n        AdbEngine.start("))
     }
 
