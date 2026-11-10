@@ -43,7 +43,6 @@ import rikka.shizuku.Shizuku
 /** User-initiated APK entry point. Uses the same theme and Material 3 as LocalADB. */
 class ApkInstallActivity : ComponentActivity() {
     private lateinit var model: ApkInstallViewModel
-    private var awaitingAdbPrompt = false
 
     private val standardInstaller = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -225,7 +224,6 @@ class ApkInstallActivity : ComponentActivity() {
                         this@ApkInstallActivity, request)
                 }
                 check(outcome == "ok") { outcome }
-                awaitingAdbPrompt = true
                 appLog.append("APK installer: ADB-assisted native prompt launched")
                 model.markAwaitingVerification()
             } catch (failure: Exception) {
@@ -235,7 +233,7 @@ class ApkInstallActivity : ComponentActivity() {
     }
 
     private fun verifyAdbInstall() {
-        if (!awaitingAdbPrompt) return
+        if (model.state.value.phase != ApkInstallUiState.Phase.VERIFYING) return
         if (model.installed()) model.complete(resultSuccess = true, cancelled = false)
         else {
             model.markAwaitingVerification()
