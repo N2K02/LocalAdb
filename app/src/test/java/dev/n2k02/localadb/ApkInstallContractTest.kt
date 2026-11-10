@@ -25,7 +25,7 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("openAdbInstaller()"))
         assertTrue(activity.contains("Shizuku.getUid() == Process.SHELL_UID"))
         assertTrue(activity.contains("AndroidAutoPackageInstaller.startWithLocalHelper"))
-        assertTrue(helper.contains("uri == expected || uri == generic"))
+        assertTrue(helper.contains("if (uri != generic) check(uri == expected)"))
         assertTrue(helper.contains("Process.myUid() == Process.SHELL_UID"))
         assertTrue(helper.contains("intent.action == Intent.ACTION_INSTALL_PACKAGE"))
     }
