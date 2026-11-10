@@ -411,10 +411,10 @@ private fun HomePage(modifier: Modifier) {
                         Text(if (intentInstructionsExpanded) "Hide instructions" else "Instructions")
                     }
                     if (intentInstructionsExpanded) {
-                        Text("1. Enable Start / Stop intents.\\n" +
-                            "2. Copy the token and keep it private.\\n" +
+                        Text("1. Enable Start / Stop intents.\n" +
+                            "2. Copy the token and keep it private.\n" +
                             "3. Run a command from ADB or configure an automation app to send " +
-                            "the same broadcast action and string extra auth.\\n" +
+                            "the same broadcast action and string extra auth.\n" +
                             "4. Regenerate the token to revoke previously copied commands.",
                             style = MaterialTheme.typography.bodySmall)
                         val startCommand = "adb shell am broadcast -a " +
