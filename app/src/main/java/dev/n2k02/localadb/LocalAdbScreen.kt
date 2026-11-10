@@ -309,7 +309,6 @@ private fun HomePage(modifier: Modifier) {
                     Icon(if (shizukuExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
                         contentDescription = if (shizukuExpanded) "Collapse Shizuku manager" else "Expand Shizuku manager")
                 }
-                if (shizukuExpanded) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     HomeMetric("Binder", if (shizuku.serviceReady) "Active" else "Offline",
                         Icons.Rounded.Dns, Modifier.weight(1f),
@@ -322,6 +321,7 @@ private fun HomePage(modifier: Modifier) {
                     HomeMetric("Grants", appCounts?.second?.toString() ?: "—",
                         Icons.Rounded.Key, Modifier.weight(1f))
                 }
+                if (shizukuExpanded) {
                 // Three compact controls share one row; their full actions remain available.
                 Row(Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
