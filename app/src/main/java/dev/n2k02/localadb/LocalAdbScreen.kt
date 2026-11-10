@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontFamily
@@ -199,6 +201,9 @@ internal fun LocalAdbScreen(onQuit: () -> Unit) {
 @Composable
 private fun HomePage(modifier: Modifier) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var automationEnabled by remember { mutableStateOf(ShizukuIntentAccess.isEnabled(context)) }
+    var automationToken by remember { mutableStateOf("") }
     val connection by AdbEngine.status.collectAsState()
     val shizuku by NativeShizukuManager.state.collectAsState()
     val helperTest by LocalHelperDiagnostics.state.collectAsState()
@@ -362,6 +367,46 @@ private fun HomePage(modifier: Modifier) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                HorizontalDivider()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Start / Stop intents", style = MaterialTheme.typography.titleSmall)
+                        Text("Allow automation apps to control embedded Shizuku using a secret token.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = automationEnabled, onCheckedChange = { enabled ->
+                        ShizukuIntentAccess.setEnabled(context, enabled)
+                        automationEnabled = enabled
+                        automationToken = if (enabled) ShizukuIntentAccess.token(context) else ""
+                    })
+                }
+                if (automationEnabled) {
+                    val token = automationToken.ifEmpty {
+                        ShizukuIntentAccess.token(context).also { automationToken = it }
+                    }
+                    Text("Token (keep private)", style = MaterialTheme.typography.labelMedium)
+                    SelectionContainer {
+                        Text(token, fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            clipboard.setText(AnnotatedString(token))
+                        }) { Text("Copy token") }
+                        OutlinedButton(onClick = {
+                            automationToken = ShizukuIntentAccess.rotateToken(context)
+                        }) { Text("Regenerate") }
+                    }
+                    Text("Target package: " + context.packageName + " · String extra: auth",
+                        style = MaterialTheme.typography.bodySmall)
+                    SelectionContainer {
+                        Text("START: " + ShizukuIntentAccess.ACTION_START +
+                            "\\nSTOP: " + ShizukuIntentAccess.ACTION_STOP,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 if (shizuku.diagnostics.isNotBlank()) {
                     TextButton(onClick = { showDiagnostics = !showDiagnostics }) {
                         Text(if (showDiagnostics) "Hide server diagnostics"
