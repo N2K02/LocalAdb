@@ -203,7 +203,9 @@ private fun HomePage(modifier: Modifier) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var automationEnabled by remember { mutableStateOf(ShizukuIntentAccess.isEnabled(context)) }
-    var automationToken by remember { mutableStateOf("") }
+    var automationToken by remember { mutableStateOf(
+        if (ShizukuIntentAccess.isEnabled(context)) ShizukuIntentAccess.token(context) else ""
+    ) }
     val connection by AdbEngine.status.collectAsState()
     val shizuku by NativeShizukuManager.state.collectAsState()
     val helperTest by LocalHelperDiagnostics.state.collectAsState()
@@ -382,9 +384,7 @@ private fun HomePage(modifier: Modifier) {
                     })
                 }
                 if (automationEnabled) {
-                    val token = automationToken.ifEmpty {
-                        ShizukuIntentAccess.token(context).also { automationToken = it }
-                    }
+                    val token = automationToken
                     Text("Token (keep private)", style = MaterialTheme.typography.labelMedium)
                     SelectionContainer {
                         Text(token, fontFamily = FontFamily.Monospace,
@@ -402,7 +402,7 @@ private fun HomePage(modifier: Modifier) {
                         style = MaterialTheme.typography.bodySmall)
                     SelectionContainer {
                         Text("START: " + ShizukuIntentAccess.ACTION_START +
-                            "\\nSTOP: " + ShizukuIntentAccess.ACTION_STOP,
+                            "\nSTOP: " + ShizukuIntentAccess.ACTION_STOP,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall)
                     }
