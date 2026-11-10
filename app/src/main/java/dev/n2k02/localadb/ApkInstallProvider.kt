@@ -41,7 +41,7 @@ class ApkInstallProvider : ContentProvider() {
                 OpenableColumns.DISPLAY_NAME -> source.name
                 OpenableColumns.SIZE -> source.length()
                 else -> null
-            } }.toTypedArray())
+            } }.toTypedArray<Any?>())
         }
     }
     override fun insert(uri: Uri, values: ContentValues?): Uri? = throw UnsupportedOperationException()
