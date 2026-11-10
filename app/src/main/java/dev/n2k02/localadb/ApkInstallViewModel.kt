@@ -50,6 +50,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         viewModelScope.launch {
             try {
                 val (info, bytes) = withContext(Dispatchers.IO) {
+                    ApkInstallProvider.cleanupExpired(app)
                     val output = ApkInstallProvider.file(app, session)
                     require(output.parentFile?.mkdirs() == true || output.parentFile?.isDirectory == true)
                     val partial = File(output.parentFile, "$session.partial")
