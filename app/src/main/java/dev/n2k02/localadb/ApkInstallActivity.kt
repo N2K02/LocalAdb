@@ -93,6 +93,7 @@ class ApkInstallActivity : ComponentActivity() {
                     ApkInstallUiState.Phase.READY -> "Install ${state.name}?"
                     ApkInstallUiState.Phase.PERMISSION -> "Allow APK installation"
                     ApkInstallUiState.Phase.INSTALLING -> "Opening installer"
+                    ApkInstallUiState.Phase.VERIFYING -> "Verify installation"
                     ApkInstallUiState.Phase.RESULT -> "Installation result"
                     ApkInstallUiState.Phase.ERROR -> "Unable to open APK"
                 })
@@ -121,10 +122,8 @@ class ApkInstallActivity : ComponentActivity() {
                         TextButton(onClick = ::openStandardInstaller) { Text("Install") }
                     ApkInstallUiState.Phase.PERMISSION ->
                         TextButton(onClick = ::requestUnknownSources) { Text("Settings") }
-                    ApkInstallUiState.Phase.INSTALLING ->
-                        TextButton(onClick = ::verifyAdbInstall, enabled = awaitingAdbPrompt) {
-                            Text("Verify")
-                        }
+                    ApkInstallUiState.Phase.VERIFYING ->
+                        TextButton(onClick = ::verifyAdbInstall) { Text("Verify") }
                     ApkInstallUiState.Phase.RESULT, ApkInstallUiState.Phase.ERROR ->
                         TextButton(onClick = { model.abandon(); finish() }) { Text("Close") }
                     else -> {}
@@ -140,10 +139,8 @@ class ApkInstallActivity : ComponentActivity() {
                         TextButton(onClick = { model.resetReady("Use ADB-assisted installation or grant permission") }) {
                             Text("Back")
                         }
-                    ApkInstallUiState.Phase.INSTALLING ->
-                        TextButton(onClick = { if (awaitingAdbPrompt) verifyAdbInstall() }) {
-                            Text("Check result")
-                        }
+                    ApkInstallUiState.Phase.VERIFYING ->
+                        TextButton(onClick = { model.abandon(); finish() }) { Text("Close") }
                     else -> {}
                 }
             },
@@ -230,8 +227,6 @@ class ApkInstallActivity : ComponentActivity() {
                 check(outcome == "ok") { outcome }
                 awaitingAdbPrompt = true
                 appLog.append("APK installer: ADB-assisted native prompt launched")
-                model.resetReady("Complete Android's installer, then return here to verify.")
-                // Reset the progress state to show an explicit verification option.
                 model.markAwaitingVerification()
             } catch (failure: Exception) {
                 reportFailure("ADB-assisted launch failed: ${failure.message}. Use Install instead.")
@@ -242,8 +237,10 @@ class ApkInstallActivity : ComponentActivity() {
     private fun verifyAdbInstall() {
         if (!awaitingAdbPrompt) return
         if (model.installed()) model.complete(resultSuccess = true, cancelled = false)
-        else model.resetReady("No new installation detected yet. Check Android's installer and retry.")
-        awaitingAdbPrompt = false
+        else {
+            model.markAwaitingVerification()
+            appLog.append("APK installer: no installation change detected")
+        }
     }
 
     private fun reportFailure(message: String) {
