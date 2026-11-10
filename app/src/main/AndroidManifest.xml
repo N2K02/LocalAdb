@@ -54,6 +54,14 @@
         <provider android:name=".AndroidAutoApkProvider"
             android:authorities="${applicationId}.android-auto-apk"
             android:exported="false" android:grantUriPermissions="true" />
+        <!-- Opt-in token authenticated automation; exported for Tasker/MacroDroid. -->
+        <receiver android:name=".ShizukuAutomationReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="moe.shizuku.privileged.api.START" />
+                <action android:name="moe.shizuku.privileged.api.STOP" />
+            </intent-filter>
+        </receiver>
         <receiver android:name=".ShizukuBinderRequestReceiver"
             android:exported="true" tools:ignore="ExportedReceiver">
             <intent-filter>

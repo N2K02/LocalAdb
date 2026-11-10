@@ -133,6 +133,8 @@ internal object NativeShizukuManager {
      */
     fun start(context: Context, explicit: Boolean = false) {
         val app = context.applicationContext
+        // Authenticated external START is an explicit user-authorized resume.
+        if (explicit) setManuallyStopped(app, false)
         if (!explicit && (!autostart(app) || manuallyStopped(app))) {
             if (manuallyStopped(app)) state.update {
                 it.copy(manuallyStopped = true,
