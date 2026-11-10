@@ -26,7 +26,7 @@ class ApkInstallContractTest {
         assertTrue(provider.contains("uri.pathSegments.size != 1"))
         assertTrue(vm.contains("UUID.randomUUID().toString()"))
         assertTrue(vm.contains("require(!output.exists())"))
-        assertTrue(vm.contains("512L * 1024 * 1024"))
+        assertTrue(vm.contains("ApkInstallPolicy.MAX_APK_BYTES"))
     }
 
     @Test fun adbAssistedPathCannotLaunchArbitraryUriOrComponent() {
@@ -63,7 +63,7 @@ class ApkInstallContractTest {
     @Test fun installedVersionIsVerifiedBeforeReportingAdbSuccess() {
         val code = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
         assertTrue(code.contains("fun installed(): Boolean"))
-        assertTrue(code.contains("current.lastUpdateTime != priorUpdate"))
+        assertTrue(code.contains("ApkInstallPolicy.installedChanged"))
         assertTrue(code.contains("app.revokeUriPermission(stagedUri()"))
     }
 }
