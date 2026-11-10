@@ -10,14 +10,11 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileNotFoundException
-import java.util.UUID
 
 /** Isolated immutable APK snapshots. Each URI addresses one install session. */
 class ApkInstallProvider : ContentProvider() {
     companion object {
-        private val TOKEN = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-        fun validSession(id: String): Boolean = TOKEN.matches(id) &&
-            runCatching { UUID.fromString(id).toString() == id }.getOrDefault(false)
+        fun validSession(id: String): Boolean = ApkInstallPolicy.validSession(id)
         fun file(context: Context, session: String): File {
             require(validSession(session)) { "Invalid APK session" }
             return File(File(context.cacheDir, "apk_install"), "$session.apk")
