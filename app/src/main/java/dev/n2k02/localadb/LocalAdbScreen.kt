@@ -204,6 +204,7 @@ private fun HomePage(modifier: Modifier) {
     val helperTest by LocalHelperDiagnostics.state.collectAsState()
     val permissions by AdbPermissionBootstrap.state.collectAsState()
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
+    var shizukuExpanded by rememberSaveable { mutableStateOf(false) }
     var appCounts by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     // Count real eligible installed apps, not invented screenshot values.
@@ -290,6 +291,17 @@ private fun HomePage(modifier: Modifier) {
                     },
                     compact = true,
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { shizukuExpanded = !shizukuExpanded },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(if (shizukuExpanded) "Collapse" else "Expand",
+                        style = MaterialTheme.typography.labelMedium)
+                    Icon(if (shizukuExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = if (shizukuExpanded) "Collapse Shizuku manager" else "Expand Shizuku manager")
+                }
+                if (shizukuExpanded) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     HomeMetric("Binder", if (shizuku.serviceReady) "Active" else "Offline",
                         Icons.Rounded.Dns, Modifier.weight(1f),
@@ -363,6 +375,7 @@ private fun HomePage(modifier: Modifier) {
                                 color = MaterialTheme.colorScheme.error)
                         }
                     }
+                }
                 }
             }
         }
