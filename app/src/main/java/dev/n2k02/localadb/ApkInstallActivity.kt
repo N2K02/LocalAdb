@@ -12,6 +12,13 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
+import android.content.ComponentName
+import android.os.Process
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import rikka.shizuku.Shizuku
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
@@ -26,6 +33,8 @@ class ApkInstallActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private var staged = false
     private var awaitingPermission = false
+    private var awaitingResult = false
+    private val installRequest = 501
     private val tag = "LocalAdbApkInstall"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,6 +91,7 @@ class ApkInstallActivity : Activity() {
                             .setTitle("Install $name?")
                             .setMessage(message)
                             .setNegativeButton("Cancel") { _, _ -> finish() }
+                            .setNeutralButton("ADB-assisted") { _, _ -> openAdbInstaller() }
                             .setPositiveButton("Install") { _, _ -> openInstaller() }
                             .setOnCancelListener { finish() }
                             .show()
@@ -115,20 +125,99 @@ class ApkInstallActivity : Activity() {
         }
         try {
             val uri = ApkInstallProvider.uri(this)
-            val install = Intent(Intent.ACTION_VIEW).apply {
+            val install = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 clipData = ClipData.newUri(contentResolver, "APK", uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                putExtra(Intent.EXTRA_RETURN_RESULT, true)
             }
             Log.i(tag, "Launching Android package installer")
             appLog.append("APK installer: system confirmation launched")
-            startActivity(install)
-            finish()
+            awaitingResult = true
+            @Suppress("DEPRECATION")
+            startActivityForResult(install, installRequest)
         } catch (failure: Exception) {
             Log.e(tag, "Installer launch failed", failure)
             appLog.append("APK installer: launch failed (${failure.javaClass.simpleName})")
             fail("Could not open Android installer: ${failure.message}")
         }
+    }
+
+    private fun openAdbInstaller() {
+        if (!staged) return
+        val ready = NativeShizukuManager.state.value.serviceReady && runCatching {
+            Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID
+        }.getOrDefault(false)
+        if (!ready) {
+            appLog.append("APK installer: ADB-assisted path unavailable")
+            AlertDialog.Builder(this)
+                .setTitle("ADB not connected")
+                .setMessage("Start LocalADB and connect its Shizuku service, then retry. You can still use the standard installer.")
+                .setNegativeButton("Cancel") { _, _ -> finish() }
+                .setPositiveButton("Standard installer") { _, _ -> openInstaller() }
+                .show()
+            return
+        }
+        val uri = ApkInstallProvider.uri(this)
+        val candidates = listOf(AndroidAutoInstallPolicy.GOOGLE_INSTALLER,
+            AndroidAutoInstallPolicy.AOSP_INSTALLER)
+        val target = candidates.firstOrNull { flat ->
+            val component = ComponentName.unflattenFromString(flat) ?: return@firstOrNull false
+            @Suppress("DEPRECATION")
+            runCatching { packageManager.getActivityInfo(component, 0) }.isSuccess
+        } ?: AndroidAutoInstallPolicy.AOSP_INSTALLER
+        val request = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            clipData = ClipData.newUri(contentResolver, "APK", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            component = ComponentName.unflattenFromString(target)
+        }
+        candidates.forEach { flat ->
+            ComponentName.unflattenFromString(flat)?.packageName?.let { installer ->
+                runCatching { grantUriPermission(installer, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            }
+        }
+        lifecycleScope.launch {
+            try {
+                val outcome = withContext(Dispatchers.IO) {
+                    AndroidAutoPackageInstaller.startWithLocalHelper(this@ApkInstallActivity, request)
+                }
+                check(outcome == "ok") { outcome }
+                awaitingResult = true
+                appLog.append("APK installer: ADB-assisted system prompt launched")
+                // The shell service launches the native installer externally;
+                // Android does not provide a reliable completion callback here.
+                Toast.makeText(this@ApkInstallActivity,
+                    "Confirm installation in Android's package installer", Toast.LENGTH_LONG).show()
+                finish()
+            } catch (problem: Exception) {
+                appLog.append("APK installer: ADB-assisted launch failed")
+                AlertDialog.Builder(this@ApkInstallActivity)
+                    .setTitle("ADB-assisted install unavailable")
+                    .setMessage(problem.message ?: "Could not launch system installer")
+                    .setPositiveButton("Standard installer") { _, _ -> openInstaller() }
+                    .setNegativeButton("Cancel") { _, _ -> finish() }
+                    .show()
+            }
+        }
+    }
+
+    @Deprecated("Android installer result contract")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != installRequest) return
+        awaitingResult = false
+        val status = data?.getIntExtra(Intent.EXTRA_INSTALL_RESULT, Int.MIN_VALUE)
+        val successful = resultCode == RESULT_OK || status == PackageManager.INSTALL_SUCCEEDED
+        val cancelled = resultCode == RESULT_CANCELED && status == null
+        val summary = when {
+            successful -> "Installation completed"
+            cancelled -> "Installation cancelled or not confirmed"
+            else -> "Installation did not complete (result: ${status ?: resultCode})"
+        }
+        appLog.append("APK installer: $summary")
+        Toast.makeText(this, summary, Toast.LENGTH_LONG).show()
+        finish()
     }
 
     override fun onResume() {
