@@ -30,5 +30,11 @@ class ShizukuAutomationContractTest {
         assertTrue(manifest.contains("moe.shizuku.privileged.api.STOP"))
         assertTrue(screen.contains("if (shizukuExpanded) {"))
         assertTrue(screen.contains("ShizukuIntentAccess.rotateToken(context)"))
+        assertTrue(screen.contains("var intentInstructionsExpanded by rememberSaveable { mutableStateOf(false) }"))
+        assertTrue(screen.contains("Text(if (intentInstructionsExpanded) \"Hide instructions\" else \"Instructions\")"))
+        assertTrue(screen.contains("Copy start command"))
+        assertTrue(screen.contains("Copy stop command"))
+        assertTrue(screen.contains("val startCommand = \"adb shell am broadcast -a \""))
+        assertTrue(screen.contains("val stopCommand = \"adb shell am broadcast -a \""))
     }
 }
