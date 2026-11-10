@@ -77,6 +77,7 @@ class ApkInstallActivity : Activity() {
                     main.post {
                         if (isFinishing || isDestroyed) return@post
                         staged = true
+                        appLog.append("APK installer: validated ${info.packageName}")
                         AlertDialog.Builder(this)
                             .setTitle("Install $name?")
                             .setMessage(message)
@@ -90,6 +91,7 @@ class ApkInstallActivity : Activity() {
                 }
             } catch (failure: Exception) {
                 Log.w(tag, "APK validation/staging failed", failure)
+                appLog.append("APK installer: staging failed (${failure.javaClass.simpleName})")
                 main.post { fail(failure.message ?: "Unable to read APK") }
             }
         }
@@ -99,6 +101,7 @@ class ApkInstallActivity : Activity() {
         if (!staged) return
         if (!packageManager.canRequestPackageInstalls()) {
             awaitingPermission = true
+            appLog.append("APK installer: unknown-app-source permission required")
             AlertDialog.Builder(this)
                 .setTitle("Allow APK installation")
                 .setMessage("Android requires permission for LocalAdb to install apps from this source.")
@@ -118,10 +121,12 @@ class ApkInstallActivity : Activity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             Log.i(tag, "Launching Android package installer")
+            appLog.append("APK installer: system confirmation launched")
             startActivity(install)
             finish()
         } catch (failure: Exception) {
             Log.e(tag, "Installer launch failed", failure)
+            appLog.append("APK installer: launch failed (${failure.javaClass.simpleName})")
             fail("Could not open Android installer: ${failure.message}")
         }
     }
