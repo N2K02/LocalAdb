@@ -239,7 +239,8 @@ internal object AndroidAutoPackageInstaller {
 
     internal suspend fun startWithLocalHelper(activity: Activity, intent: Intent): String {
         val args = Shizuku.UserServiceArgs(ComponentName(activity, LocalHelperService::class.java))
-            .tag("localhelper-android-auto-installer")
+            .tag(if (intent.data?.authority == activity.packageName + ".apk-install")
+                "localhelper-apk-installer" else "localhelper-android-auto-installer")
             .version(2)
             .processNameSuffix("android_auto_installer")
             .daemon(false)
