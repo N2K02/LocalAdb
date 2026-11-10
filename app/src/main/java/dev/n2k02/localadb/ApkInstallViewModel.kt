@@ -62,7 +62,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
                                     val n = stream.read(buffer)
                                     if (n == -1) break
                                     count += n
-                                    require(count <= 512L * 1024 * 1024) { "APK exceeds 512 MB" }
+                                    require(count <= ApkInstallPolicy.MAX_APK_BYTES) { "APK exceeds 512 MB" }
                                     out.write(buffer, 0, n)
                                 }
                             }
@@ -136,18 +136,12 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         if (pkg.isBlank()) return false
         val current = runCatching { app.packageManager.getPackageInfo(pkg, 0) }.getOrNull()
             ?: return false
-        val previous = priorVersion
-        return previous == null || versionCode(current) != previous ||
-            current.lastUpdateTime != priorUpdate
+        return ApkInstallPolicy.installedChanged(priorVersion, priorUpdate,
+            versionCode(current), current.lastUpdateTime)
     }
 
     fun complete(resultSuccess: Boolean, cancelled: Boolean) {
-        val success = installed() || resultSuccess
-        val text = when {
-            success -> "Installation completed"
-            cancelled -> "Installation cancelled"
-            else -> "Installation was not confirmed"
-        }
+        val text = ApkInstallPolicy.result(resultSuccess, installed(), cancelled)
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT, message = text)
         appLog.append("APK installer: $text")
         pendingCleanup = true
