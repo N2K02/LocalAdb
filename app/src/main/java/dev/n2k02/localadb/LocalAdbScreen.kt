@@ -203,6 +203,7 @@ private fun HomePage(modifier: Modifier) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var automationEnabled by remember { mutableStateOf(ShizukuIntentAccess.isEnabled(context)) }
+    var intentInstructionsExpanded by rememberSaveable { mutableStateOf(false) }
     var automationToken by remember { mutableStateOf(
         if (ShizukuIntentAccess.isEnabled(context)) ShizukuIntentAccess.token(context) else ""
     ) }
@@ -398,13 +399,50 @@ private fun HomePage(modifier: Modifier) {
                             automationToken = ShizukuIntentAccess.rotateToken(context)
                         }) { Text("Regenerate") }
                     }
-                    Text("Target package: " + context.packageName + " · String extra: auth",
-                        style = MaterialTheme.typography.bodySmall)
-                    SelectionContainer {
-                        Text("START: " + ShizukuIntentAccess.ACTION_START +
-                            "\nSTOP: " + ShizukuIntentAccess.ACTION_STOP,
-                            fontFamily = FontFamily.Monospace,
+                    TextButton(onClick = {
+                        intentInstructionsExpanded = !intentInstructionsExpanded
+                    }) {
+                        Icon(
+                            if (intentInstructionsExpanded) Icons.Rounded.ExpandLess
+                            else Icons.Rounded.ExpandMore,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (intentInstructionsExpanded) "Hide instructions" else "Instructions")
+                    }
+                    if (intentInstructionsExpanded) {
+                        Text("1. Enable Start / Stop intents.\\n" +
+                            "2. Copy the token and keep it private.\\n" +
+                            "3. Run a command from ADB or configure an automation app to send " +
+                            "the same broadcast action and string extra auth.\\n" +
+                            "4. Regenerate the token to revoke previously copied commands.",
                             style = MaterialTheme.typography.bodySmall)
+                        val startCommand = "adb shell am broadcast -a " +
+                            ShizukuIntentAccess.ACTION_START + " -p " +
+                            context.packageName + " --es auth " + token
+                        val stopCommand = "adb shell am broadcast -a " +
+                            ShizukuIntentAccess.ACTION_STOP + " -p " +
+                            context.packageName + " --es auth " + token
+                        Text("Start Shizuku", style = MaterialTheme.typography.labelLarge)
+                        SelectionContainer {
+                            Text(startCommand, style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace)
+                        }
+                        OutlinedButton(onClick = {
+                            clipboard.setText(AnnotatedString(startCommand))
+                        }) { Text("Copy start command") }
+                        Text("Stop Shizuku", style = MaterialTheme.typography.labelLarge)
+                        SelectionContainer {
+                            Text(stopCommand, style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace)
+                        }
+                        OutlinedButton(onClick = {
+                            clipboard.setText(AnnotatedString(stopCommand))
+                        }) { Text("Copy stop command") }
+                        Text("These commands contain the secret token. Avoid sharing them " +
+                            "or including them in public logs.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (shizuku.diagnostics.isNotBlank()) {
