@@ -25,6 +25,17 @@ class ApkInstallProvider : ContentProvider() {
                 .authority("${context.packageName}.apk-install")
                 .appendPath("$session.apk").build()
         }
+        /** Only old, abandoned sessions are pruned; active installer reads remain untouched. */
+        fun cleanupExpired(context: Context, now: Long = System.currentTimeMillis()) {
+            val directory = File(context.cacheDir, "apk_install")
+            directory.listFiles()?.forEach { candidate ->
+                val id = candidate.name.removeSuffix(".apk")
+                if (candidate.name.endsWith(".apk") && validSession(id) &&
+                    now - candidate.lastModified() > 48L * 60 * 60 * 1000) {
+                    candidate.delete()
+                }
+            }
+        }
         fun cleanup(context: Context, session: String) {
             if (validSession(session)) file(context, session).delete()
         }
