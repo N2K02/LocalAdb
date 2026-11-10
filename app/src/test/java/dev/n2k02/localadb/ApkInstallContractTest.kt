@@ -1,45 +1,69 @@
 package dev.n2k02.localadb
 
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.io.File
+import java.util.UUID
 
 class ApkInstallContractTest {
-    @Test fun externalEntryPointsRequireAnApkMimeType() {
+    @Test fun exportedHandlerFiltersOnlyApkMimeAndContentUris() {
         val xml = File("src/main/AndroidManifest.xml").readText()
         assertTrue(xml.contains("android:name=\".ApkInstallActivity\""))
         assertTrue(xml.contains("application/vnd.android.package-archive"))
         assertTrue(xml.contains("android.intent.action.VIEW"))
         assertTrue(xml.contains("android.intent.action.SEND"))
+        assertTrue(xml.contains("android:scheme=\"content\""))
+        assertTrue(xml.contains("android:exported=\"false\""))
     }
-    @Test fun installerDoesNotAcceptFileUrisOrLaunchWithoutConfirmation() {
-        val source = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
-        assertTrue(source.contains("uri.scheme != \"content\""))
-        assertTrue(source.contains("setPositiveButton(\"Install\")"))
-        assertTrue(source.contains("Intent.FLAG_GRANT_READ_URI_PERMISSION"))
-        assertTrue(source.contains("canRequestPackageInstalls()"))
+
+    @Test fun eachApkSessionUsesUniqueConstrainedUri() {
+        val provider = File("src/main/java/dev/n2k02/localadb/ApkInstallProvider.kt").readText()
+        val vm = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(provider.contains("validSession(session)"))
+        assertTrue(provider.contains("MODE_READ_ONLY"))
+        assertTrue(provider.contains("mode != \"r\""))
+        assertTrue(provider.contains("uri.pathSegments.size != 1"))
+        assertTrue(vm.contains("UUID.randomUUID().toString()"))
+        assertTrue(vm.contains("require(!output.exists())"))
+        assertTrue(vm.contains("512L * 1024 * 1024"))
     }
-    @Test fun adbAssistedPathMustKeepNativeInstallerAndShellIdentityCheck() {
+
+    @Test fun adbAssistedPathCannotLaunchArbitraryUriOrComponent() {
         val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
         val helper = File("src/main/java/dev/n2k02/localadb/LocalHelperService.kt").readText()
-        assertTrue(activity.contains("openAdbInstaller()"))
         assertTrue(activity.contains("Shizuku.getUid() == Process.SHELL_UID"))
-        assertTrue(activity.contains("AndroidAutoPackageInstaller.startWithLocalHelper"))
-        assertTrue(helper.contains("if (uri != generic) check(uri == expected)"))
+        assertTrue(activity.contains("startWithLocalHelper"))
         assertTrue(helper.contains("Process.myUid() == Process.SHELL_UID"))
+        assertTrue(helper.contains("ApkInstallProvider.validSession(genericId)"))
         assertTrue(helper.contains("intent.action == Intent.ACTION_INSTALL_PACKAGE"))
+        assertTrue(helper.contains("Unsupported installer"))
     }
-    @Test fun standardInstallerRequestsAndRecordsResult() {
+
+    @Test fun composeDialogAndRealActivityResultAreUsed() {
         val code = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
-        assertTrue(code.contains("Intent.EXTRA_RETURN_RESULT"))
-        assertTrue(code.contains("startActivityForResult"))
-        assertTrue(code.contains("override fun onActivityResult"))
-        assertTrue(code.contains("Installation completed"))
+        assertTrue(code.contains("N2K02Theme"))
+        assertTrue(code.contains("AlertDialog("))
+        assertTrue(code.contains("MaterialTheme.shapes.extraLarge"))
+        assertTrue(code.contains("ActivityResultContracts.StartActivityForResult()"))
+        assertTrue(code.contains("model.complete("))
+        assertTrue(code.contains("model.markAwaitingVerification()"))
+        assertFalse(code.contains("android.app.AlertDialog"))
     }
-    @Test fun providerIsReadOnlyAndConstrainedToOneApk() {
-        val source = File("src/main/java/dev/n2k02/localadb/ApkInstallProvider.kt").readText()
-        assertTrue(source.contains("uri.path != \"/selected.apk\""))
-        assertTrue(source.contains("mode != \"r\""))
-        assertTrue(source.contains("MODE_READ_ONLY"))
+
+    @Test fun lifecycleStateRetainedUntilInstallerResult() {
+        val code = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(code.contains("AndroidViewModel"))
+        assertTrue(code.contains("if (started) return"))
+        assertTrue(code.contains("Phase.INSTALLING"))
+        assertTrue(code.contains("Phase.VERIFYING"))
+        assertTrue(code.contains("override fun onCleared()"))
+    }
+
+    @Test fun installedVersionIsVerifiedBeforeReportingAdbSuccess() {
+        val code = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(code.contains("fun installed(): Boolean"))
+        assertTrue(code.contains("current.lastUpdateTime != priorUpdate"))
+        assertTrue(code.contains("app.revokeUriPermission(stagedUri()"))
     }
 }
