@@ -1,6 +1,6 @@
 package dev.n2k02.localadb
 
-import android.app.Activity
+import androidx.activity.ComponentActivity
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
@@ -28,7 +28,7 @@ import java.util.concurrent.Executors
  * are staged privately and passed to Android's package installer with a
  * read-only grant; no file:// exposure or privileged install shortcuts.
  */
-class ApkInstallActivity : Activity() {
+class ApkInstallActivity : ComponentActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var staged = false
