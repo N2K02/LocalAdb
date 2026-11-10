@@ -207,8 +207,9 @@ class ApkInstallActivity : ComponentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != installRequest) return
         awaitingResult = false
-        val status = data?.getIntExtra(Intent.EXTRA_INSTALL_RESULT, Int.MIN_VALUE)
-        val successful = resultCode == RESULT_OK || status == PackageManager.INSTALL_SUCCEEDED
+        val status = data?.getIntExtra("android.intent.extra.INSTALL_RESULT", Int.MIN_VALUE)
+            ?.takeUnless { it == Int.MIN_VALUE }
+        val successful = resultCode == RESULT_OK
         val cancelled = resultCode == RESULT_CANCELED && status == null
         val summary = when {
             successful -> "Installation completed"
