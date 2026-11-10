@@ -52,7 +52,7 @@ class LocalHelperService : Binder() {
         val uri = intent.dataString.orEmpty()
         val expected = "content://dev.n2k02.localadb.android-auto-apk/selected.apk"
         val generic = "content://dev.n2k02.localadb.apk-install/selected.apk"
-        check(uri == expected || uri == generic) { "Unexpected installation URI" }
+        if (uri != generic) check(uri == expected) { "Unexpected installation URI" }
         val command = if (uri == expected) AndroidAutoInstallPolicy.shellCommand(
             "dev.n2k02.localadb", component
         ) else { 
