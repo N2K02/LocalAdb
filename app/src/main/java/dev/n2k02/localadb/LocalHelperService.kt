@@ -51,10 +51,17 @@ class LocalHelperService : Binder() {
         val component = intent.component?.flattenToString().orEmpty()
         val uri = intent.dataString.orEmpty()
         val expected = "content://dev.n2k02.localadb.android-auto-apk/selected.apk"
-        check(uri == expected) { "Unexpected installation URI" }
-        val command = AndroidAutoInstallPolicy.shellCommand(
+        val generic = "content://dev.n2k02.localadb.apk-install/selected.apk"
+        check(uri == expected || uri == generic) { "Unexpected installation URI" }
+        val command = if (uri == expected) AndroidAutoInstallPolicy.shellCommand(
             "dev.n2k02.localadb", component
-        )
+        ) else { 
+            check(component == AndroidAutoInstallPolicy.GOOGLE_INSTALLER ||
+                component == AndroidAutoInstallPolicy.AOSP_INSTALLER) { "Unsupported installer" }
+            "am start -n " + component +
+                " -a android.intent.action.INSTALL_PACKAGE" +
+                " -d " + generic + " -t application/vnd.android.package-archive"
+        }
         return if (Build.VERSION.SDK_INT <= 34) {
             // Android 14 and earlier validate the result caller. Supplying the
             // LocalAdb activity token keeps LocalAdb as the permission requester.
