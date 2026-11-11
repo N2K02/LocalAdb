@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Parcel
 import android.os.Process
+import android.os.ParcelFileDescriptor
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
@@ -233,6 +234,55 @@ internal object AndroidAutoPackageInstaller {
                 state.value = state.value.copy(busy = false, pending = false,
                     message = "Installation could not start: " +
                         (failure.message ?: failure.javaClass.simpleName))
+            }
+        }
+    }
+
+    /** Installs one private, validated APK over a read-only descriptor using
+     * the existing Shizuku UID 2000 helper. Keeps the work off the UI thread.
+     */
+    internal suspend fun installDirect(context: Context, file: java.io.File): String {
+        check(file.isFile && file.length() in 1..ApkInstallPolicy.MAX_APK_BYTES) {
+            "Selected APK is missing or too large"
+        }
+        val args = Shizuku.UserServiceArgs(ComponentName(context, LocalHelperService::class.java))
+            .tag("localhelper-direct-apk-installer")
+            .version(2)
+            .processNameSuffix("direct_apk_installer")
+            .daemon(false)
+        val attached = CompletableDeferred<IBinder>()
+        val conn = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                if (service != null && service.pingBinder()) attached.complete(service)
+                else attached.completeExceptionally(IllegalStateException("ADB helper unavailable"))
+            }
+            override fun onServiceDisconnected(name: ComponentName?) {
+                attached.completeExceptionally(IllegalStateException("ADB helper disconnected"))
+            }
+        }
+        Shizuku.bindUserService(args, conn)
+        try {
+            val binder = withTimeout(15_000) { attached.await() }
+            val request = Parcel.obtain()
+            val response = Parcel.obtain()
+            try {
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                    request.writeInterfaceToken(LocalHelperService.DESCRIPTOR)
+                    request.writeLong(file.length())
+                    fd.writeToParcel(request, 0)
+                    check(binder.transact(LocalHelperService.INSTALL_APK_DIRECT, request, response, 0)) {
+                        "ADB helper refused APK installation"
+                    }
+                    response.readException()
+                    return response.readString().orEmpty()
+                }
+            } finally {
+                response.recycle()
+                request.recycle()
+            }
+        } finally {
+            withContext(NonCancellable) {
+                runCatching { Shizuku.unbindUserService(args, conn, true) }
             }
         }
     }
