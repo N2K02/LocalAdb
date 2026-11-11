@@ -77,6 +77,24 @@ class CompactHomeInstallerUiTest {
         assertTrue(installer.contains("Package manager reported success"))
     }
 
+    @Test fun resultBadgeIsSeparateFromAdbReadinessAndNativeActionIsProminent() {
+        val ui = source("AndroidAutoInstallerCard.kt")
+        val controller = source("AndroidAutoPackageInstaller.kt")
+        assertTrue(ui.contains("InstallerResultSummary(state)"))
+        assertTrue(ui.contains("ResultBadgeStyle(\"Installation failed\""))
+        assertTrue(ui.contains("ResultBadgeStyle(\"Cancelled or rejected\""))
+        assertTrue(ui.contains("ResultBadgeStyle(\"Installed\""))
+        assertTrue(ui.contains("server.serviceReady -> \"ADB ready\""))
+        assertTrue(ui.contains("FilledTonalButton("))
+        assertTrue(ui.contains("onClick = { activity?.let(AndroidAutoPackageInstaller::install) }"))
+        assertTrue(ui.contains("Text(\"Native install · Android confirmation\""))
+        assertFalse(ui.contains("TextButton(\n                enabled = activity != null"))
+        assertTrue(controller.contains("enum class ResultStatus"))
+        assertTrue(controller.contains("resultStatus = ResultStatus.CANCELLED"))
+        assertTrue(controller.contains("resultStatus = ResultStatus.FAILED"))
+        assertTrue(controller.contains("resultStatus = ResultStatus.INSTALLED"))
+    }
+
     @Test fun installerRemainsLastCardAndBottomNavigationIsUnchanged() {
         val main = source("LocalAdbScreen.kt")
         val home = main.substringAfter("private fun HomePage(")
