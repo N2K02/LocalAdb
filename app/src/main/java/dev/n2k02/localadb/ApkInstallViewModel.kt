@@ -28,9 +28,11 @@ internal data class ApkInstallUiState(
     val message: String = "",
     val isError: Boolean = false,
     val sourceDetails: String = "",
+    val outcome: Outcome = Outcome.NONE,
     val phase: Phase = Phase.STAGING,
 ) {
     enum class Phase { STAGING, READY, PERMISSION, INSTALLING, RESULT, ERROR }
+    enum class Outcome { NONE, SUCCESS, FAILED, CANCELLED, UNVERIFIED }
 }
 
 /** Retained across configuration changes; each invocation stages its own immutable APK. */
@@ -48,7 +50,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         started = true
         if (input == null || input.scheme != "content") {
             state.value = ApkInstallUiState(loading = false, phase = ApkInstallUiState.Phase.ERROR,
-                message = "Select an APK from a file manager")
+                message = "Select an APK from a file manager",
+                outcome = ApkInstallUiState.Outcome.FAILED)
             return
         }
         viewModelScope.launch {
@@ -103,7 +106,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
                 appLog.append("APK installer: validation failure (${failure.javaClass.simpleName})")
                 state.value = ApkInstallUiState(loading = false,
                     message = failure.message ?: "Unable to stage APK",
-                    phase = ApkInstallUiState.Phase.ERROR)
+                    phase = ApkInstallUiState.Phase.ERROR,
+                    outcome = ApkInstallUiState.Outcome.FAILED)
             }
         }
     }
@@ -161,7 +165,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         if (state.value.phase != ApkInstallUiState.Phase.READY &&
             state.value.phase != ApkInstallUiState.Phase.PERMISSION) return
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.INSTALLING,
-            message = "", isError = false)
+            message = "", isError = false, outcome = ApkInstallUiState.Outcome.NONE)
     }
 
     fun permissionRequired() {
@@ -171,7 +175,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
 
     fun resetReady(message: String, error: Boolean = false) {
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.READY, message = message,
-            isError = error, sourceDetails = "")
+            isError = error, sourceDetails = "",
+            outcome = if (error) ApkInstallUiState.Outcome.FAILED else ApkInstallUiState.Outcome.NONE)
     }
 
     fun installed(): Boolean {
@@ -190,8 +195,15 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             DirectInstallAttribution.sourceDetails(requestedInstaller,
                 DirectInstallAttribution.readBack(app, state.value.packageName))
         } else ""
+        val outcome = when {
+            cancelled -> ApkInstallUiState.Outcome.CANCELLED
+            resultSuccess && verified -> ApkInstallUiState.Outcome.SUCCESS
+            resultSuccess -> ApkInstallUiState.Outcome.UNVERIFIED
+            else -> ApkInstallUiState.Outcome.FAILED
+        }
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT,
-            message = text, sourceDetails = sourceDetails)
+            message = text, isError = outcome == ApkInstallUiState.Outcome.FAILED,
+            sourceDetails = sourceDetails, outcome = outcome)
         appLog.append("APK installer: $text; " + sourceDetails.replace('\n', ' ').take(250))
         pendingCleanup = true
         // The installer has returned; no further content reads are expected.
