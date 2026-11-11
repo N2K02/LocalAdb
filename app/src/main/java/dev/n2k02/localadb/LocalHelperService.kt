@@ -7,9 +7,6 @@ import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
 import android.os.Process
-import android.os.ParcelFileDescriptor
-import android.system.Os
-import java.util.concurrent.TimeUnit
 import java.lang.reflect.InvocationTargetException
 
 /** Instantiated by Shizuku in a separate shell process, never an Android Service. */
@@ -36,23 +33,6 @@ class LocalHelperService : Binder() {
             checkNotNull(reply).apply {
                 writeNoException()
                 writeString(startSystemInstaller(intent, resultTo))
-            }
-            return true
-        }
-        if (code == INSTALL_APK_DIRECT) {
-            data.enforceInterface(DESCRIPTOR)
-            // The caller supplies an already-validated private APK as a read-only
-            // file descriptor, not a filesystem path or arbitrary shell command.
-            val bytes = data.readLong()
-            val apk = ParcelFileDescriptor.CREATOR.createFromParcel(data)
-            val outcome = try {
-                installDirectApk(apk, bytes)
-            } finally {
-                apk.close()
-            }
-            checkNotNull(reply).apply {
-                writeNoException()
-                writeString(outcome)
             }
             return true
         }
@@ -109,48 +89,10 @@ class LocalHelperService : Binder() {
         }
     }
 
-    /** Stream exactly the selected APK bytes to Android's shell package manager.
-     * No temporary world-readable file, shell interpolation, permission grants,
-     * arbitrary commands, silent permission escalation or version downgrade.
-     */
-    private fun installDirectApk(apk: ParcelFileDescriptor, bytes: Long): String {
-        check(Process.myUid() == Process.SHELL_UID) { "Not running as authorized ADB shell" }
-        require(bytes in 1..(512L * 1024 * 1024)) { "Invalid APK size" }
-        val stat = Os.fstat(apk.fileDescriptor)
-        require(stat.st_size == bytes) { "Selected APK changed during installation" }
-        val process = ProcessBuilder(
-            "/system/bin/pm", "install", "-r", "-t", "-S", bytes.toString(), "-"
-        ).redirectErrorStream(true).start()
-        return try {
-            val buffer = ByteArray(64 * 1024)
-            var copied = 0L
-            // Do not close the Binder-owned descriptor here; onTransact owns it.
-            val input = java.io.FileInputStream(apk.fileDescriptor)
-            process.outputStream.use { output ->
-                while (copied < bytes) {
-                    val n = input.read(buffer, 0, minOf(buffer.size.toLong(), bytes - copied).toInt())
-                    check(n > 0) { "APK stream ended before declared size" }
-                    output.write(buffer, 0, n)
-                    copied += n
-                }
-                output.flush()
-            }
-            check(process.waitFor(180, TimeUnit.SECONDS)) { "Package installation timed out" }
-            val message = process.inputStream.bufferedReader().use { it.readText().take(2048) }
-            check(process.exitValue() == 0 && message.contains("Success")) {
-                message.ifBlank { "Package manager rejected the APK" }
-            }
-            "Success"
-        } finally {
-            if (process.isAlive) process.destroyForcibly()
-        }
-    }
-
     companion object {
         const val DESCRIPTOR = "dev.n2k02.localadb.LocalHelperService"
         const val PING = IBinder.FIRST_CALL_TRANSACTION
         const val INSTALL_ANDROID_AUTO = IBinder.FIRST_CALL_TRANSACTION + 1
-        const val INSTALL_APK_DIRECT = IBinder.FIRST_CALL_TRANSACTION + 2
         const val DESTROY = 16777115
     }
 }
