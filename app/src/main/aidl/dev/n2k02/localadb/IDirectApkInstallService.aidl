@@ -6,5 +6,5 @@ import android.os.ParcelFileDescriptor;
 interface IDirectApkInstallService {
     void destroy() = 16777114;
     int getServiceUid() = 1;
-    String installApk(in ParcelFileDescriptor apk, long length) = 2;
+    String installApk(in ParcelFileDescriptor apk, long length, String installerPackageName) = 2;
 }
