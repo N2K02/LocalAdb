@@ -35,6 +35,7 @@ internal fun AndroidAutoInstallerCard() {
     val state by AndroidAutoPackageInstaller.state.collectAsState()
     val server by NativeShizukuManager.state.collectAsState()
     var showDetails by rememberSaveable { mutableStateOf(false) }
+    var playRecord by rememberSaveable { mutableStateOf(DirectInstallAttribution.enabled(context)) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             showDetails = false
@@ -109,6 +110,27 @@ internal fun AndroidAutoInstallerCard() {
                     Text("Install", maxLines = 1)
                 }
             }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Google Play as installer of record",
+                        style = MaterialTheme.typography.labelMedium)
+                    Text("Optional · not genuine Play initiation",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(
+                    checked = playRecord,
+                    enabled = !state.busy && !state.pending,
+                    onCheckedChange = {
+                        playRecord = it
+                        DirectInstallAttribution.setEnabled(context, it)
+                    }
+                )
+            }
             TextButton(
                 enabled = activity != null && state.packageName != null &&
                     !state.busy && !state.pending,
@@ -178,6 +200,10 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                         else -> "System installer"
                     })
             }
+            if (state.attributionStatus.isNotBlank()) {
+                Text(state.attributionStatus, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (state.initiatingPackage != null || state.installingPackage != null) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 InstallerDetailRow("Initiator", state.initiatingPackage ?: "Not recorded")
@@ -206,7 +232,7 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         if (state.installMethod == "DIRECT_ADB")
-                            "Direct ADB installs do not claim Google Play attribution."
+                            "Direct ADB installs do not claim Google Play attribution. The chosen installer of record may differ from the actual initiator."
                         else "Google Play attribution does not guarantee this app will appear in Android Auto.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
