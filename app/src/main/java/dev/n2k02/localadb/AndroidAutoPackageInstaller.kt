@@ -165,6 +165,64 @@ internal object AndroidAutoPackageInstaller {
         }
     }
 
+    /**
+     * Home Shizuku installer: direct, confirmation-free APK session under UID 2000.
+     * Never claims Google Play attribution; the separate native path retains
+     * its existing Android Auto/Play compatibility behavior.
+     */
+    fun installDirectFromHome(activity: Activity) {
+        if (state.value.busy || state.value.pending) return
+        val selected = archive ?: return
+        if (!(NativeShizukuManager.state.value.serviceReady && runCatching {
+                Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID
+            }.getOrDefault(false))) {
+            state.value = state.value.copy(
+                message = "Direct install requires the embedded Shizuku shell (UID 2000). " +
+                    "Start Shizuku or select Native install.",
+                details = "Direct shell service unavailable")
+            return
+        }
+        task?.cancel()
+        task = scope.launch {
+            val app = activity.applicationContext
+            val file = AndroidAutoApkProvider.file(app)
+            try {
+                state.value = state.value.copy(
+                    busy = true, pending = false, success = false,
+                    installMethod = "DIRECT_ADB",
+                    initiatingPackage = null, installingPackage = null,
+                    message = "Installing selected APK with Shizuku shell…",
+                    details = "")
+                validateInstallCompatibility(app, file)
+                val old = packageInfo(app, selected.packageName)
+                val oldUpdate = old?.lastUpdateTime ?: 0L
+                appLog.append("Home APK installer: direct session started for " + selected.packageName)
+                val result = withContext(Dispatchers.IO) { installDirect(app, file) }
+                check(result == "Success") { "Package manager: $result" }
+                val current = packageInfo(app, selected.packageName)
+                val changed = current != null &&
+                    (old == null || current.lastUpdateTime > oldUpdate)
+                state.value = state.value.copy(
+                    busy = false, pending = false, success = true,
+                    message = if (changed) "Installed successfully using ADB shell."
+                        else "Package manager reported success; installed version read-back unavailable.",
+                    details = if (changed) "Installed package verified" else
+                        "Installation was committed; verify package status on this device")
+                appLog.append("Home APK installer: direct commit succeeded; read-back=" + changed)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.append("Home APK installer: direct failed (" +
+                    failure.javaClass.simpleName + ")")
+                state.value = state.value.copy(
+                    busy = false, pending = false, success = false,
+                    message = "Direct installation failed: " +
+                        (failure.message ?: failure.javaClass.simpleName).take(250),
+                    details = "Native install remains available.")
+            }
+        }
+    }
+
     private fun compatibleSigner(newApk: PackageInfo, old: PackageInfo): Boolean {
         if (Build.VERSION.SDK_INT < 28) return true
         val installed = old.signingInfo ?: return true // let platform installer decide
