@@ -7,7 +7,6 @@ import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.system.Os
 import java.io.FileInputStream
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
@@ -20,34 +19,36 @@ class DirectApkInstallService : Binder() {
 
     override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
         if (code == DESTROY) kotlin.system.exitProcess(0)
-        when (code) {
-            PING -> {
-                data.enforceInterface(DESCRIPTOR)
-                val challenge = data.readString()
-                checkNotNull(reply).apply {
-                    writeNoException()
-                    writeInt(Process.myUid())
-                    writeString(challenge)
-                    writeInt(PROTOCOL)
+        if (code == COMMAND) {
+            data.enforceInterface(DESCRIPTOR)
+            check(Process.myUid() == Process.SHELL_UID) { "Direct installer requires shell UID" }
+            val operation = data.readString()
+            when (operation) {
+                OP_PING -> {
+                    val challenge = data.readString()
+                    checkNotNull(reply).apply {
+                        writeNoException()
+                        writeInt(Process.myUid())
+                        writeString(challenge)
+                        writeInt(PROTOCOL)
+                    }
                 }
-                return true
+                OP_INSTALL -> {
+                    val declared = data.readLong()
+                    val apk = ParcelFileDescriptor.CREATOR.createFromParcel(data)
+                    val result = try {
+                        install(apk, declared)
+                    } finally {
+                        apk.close()
+                    }
+                    checkNotNull(reply).apply {
+                        writeNoException()
+                        writeString(result)
+                    }
+                }
+                else -> error("Unsupported APK installer operation")
             }
-            INSTALL -> {
-                data.enforceInterface(DESCRIPTOR)
-                check(Process.myUid() == Process.SHELL_UID) { "Direct installer requires shell UID" }
-                val declared = data.readLong()
-                val apk = ParcelFileDescriptor.CREATOR.createFromParcel(data)
-                val result = try {
-                    install(apk, declared)
-                } finally {
-                    apk.close()
-                }
-                checkNotNull(reply).apply {
-                    writeNoException()
-                    writeString(result)
-                }
-                return true
-            }
+            return true
         }
         return super.onTransact(code, data, reply, flags)
     }
@@ -87,9 +88,10 @@ class DirectApkInstallService : Binder() {
 
     companion object {
         const val DESCRIPTOR = "dev.n2k02.localadb.DirectApkInstallService"
-        const val PROTOCOL = 1
-        const val PING = IBinder.FIRST_CALL_TRANSACTION
-        const val INSTALL = IBinder.FIRST_CALL_TRANSACTION + 1
+        const val PROTOCOL = 2
+        const val COMMAND = IBinder.FIRST_CALL_TRANSACTION
+        const val OP_PING = "ping"
+        const val OP_INSTALL = "install"
         const val DESTROY = 16777115
     }
 }
