@@ -108,8 +108,7 @@ class ApkInstallActivity : ComponentActivity() {
                         ApkInstallUiState.Phase.STAGING -> "Preparing APK"
                         ApkInstallUiState.Phase.READY -> "Ready to install"
                         ApkInstallUiState.Phase.PERMISSION -> "Allow installation"
-                        ApkInstallUiState.Phase.INSTALLING -> "Installing via ADB"
-                        ApkInstallUiState.Phase.VERIFYING -> "Check installation"
+                        ApkInstallUiState.Phase.INSTALLING -> "Installing APK"
                         ApkInstallUiState.Phase.RESULT -> "Installation result"
                         ApkInstallUiState.Phase.ERROR -> "Couldn't open APK"
                     },
@@ -200,9 +199,6 @@ class ApkInstallActivity : ComponentActivity() {
                     ApkInstallUiState.Phase.PERMISSION ->
                         Button(onClick = ::requestUnknownSources,
                             shape = MaterialTheme.shapes.extraLarge) { Text("Open settings") }
-                    ApkInstallUiState.Phase.VERIFYING ->
-                        Button(onClick = ::verifyAdbInstall,
-                            shape = MaterialTheme.shapes.extraLarge) { Text("Verify") }
                     ApkInstallUiState.Phase.RESULT, ApkInstallUiState.Phase.ERROR ->
                         Button(onClick = { model.abandon(); finish() },
                             shape = MaterialTheme.shapes.extraLarge) { Text("Close") }
@@ -228,8 +224,6 @@ class ApkInstallActivity : ComponentActivity() {
                         TextButton(onClick = {
                             model.resetReady("Connect ADB or choose Native install.")
                         }) { Text("Back") }
-                    ApkInstallUiState.Phase.VERIFYING ->
-                        TextButton(onClick = { model.abandon(); finish() }) { Text("Close") }
                     else -> {}
                 }
             },
@@ -273,15 +267,6 @@ class ApkInstallActivity : ComponentActivity() {
             appLog.append("APK installer: native confirmation launched")
         } catch (failure: Exception) {
             reportFailure("System installer unavailable: ${failure.message}")
-        }
-    }
-
-    private fun verifyAdbInstall() {
-        if (model.state.value.phase != ApkInstallUiState.Phase.VERIFYING) return
-        if (model.installed()) model.complete(resultSuccess = true, cancelled = false)
-        else {
-            model.markAwaitingVerification()
-            appLog.append("APK installer: no installation change detected")
         }
     }
 
