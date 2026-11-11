@@ -54,6 +54,17 @@ class ApkInstallContractTest {
         assertFalse(oldHelper.contains("INSTALL_APK_DIRECT"))
     }
 
+    @Test fun directInstallReusesExistingShizukuInstallerSafetyChecks() {
+        val existing = File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
+        val viewModel = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(existing.contains("fun validateInstallCompatibility("))
+        assertTrue(existing.contains("compatibleSigner(parsed, old)"))
+        assertTrue(existing.contains("check(newCode >= oldCode)"))
+        assertTrue(viewModel.contains("AndroidAutoPackageInstaller.validateInstallCompatibility(app, staged)"))
+        assertTrue(viewModel.indexOf("validateInstallCompatibility(app, staged)") <
+            viewModel.indexOf("AndroidAutoPackageInstaller.installDirect(app, staged)"))
+    }
+
     @Test fun composeDialogAndRealActivityResultAreUsed() {
         val code = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
         assertTrue(code.contains("N2K02Theme"))
