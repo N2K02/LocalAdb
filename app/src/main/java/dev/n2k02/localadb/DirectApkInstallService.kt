@@ -29,8 +29,9 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
         var session: String? = null
         try {
             val created = runCommand(listOf("install-create", "-r", "-t"))
-            session = Regex("""\[(\d+)\]""").find(created)?.groupValues?.get(1)
+            val id = Regex("""\[(\d+)\]""").find(created)?.groupValues?.get(1)
                 ?: error("Cannot determine package install session: ${created.take(200)}")
+            session = id
             Log.i(TAG, "Created install session")
 
             val process = ProcessBuilder(
@@ -60,10 +61,12 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
             }
             Log.i(TAG, "APK transfer completed")
             val outcome = runCommand(listOf("install-commit", id))
+            check(outcome.contains("Success", ignoreCase = true)) {
+                "Package manager: ${outcome.take(300)}"
+            }
             Log.i(TAG, "Install session committed")
             session = null
-            return if (outcome.contains("Success", ignoreCase = true)) "Success"
-                else error("Package manager: ${outcome.take(300)}")
+            return "Success"
         } finally {
             session?.let { id ->
                 runCatching { runCommand(listOf("install-abandon", id)) }
