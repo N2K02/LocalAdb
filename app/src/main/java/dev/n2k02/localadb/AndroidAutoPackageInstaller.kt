@@ -213,7 +213,8 @@ internal object AndroidAutoPackageInstaller {
                 throw cancelled
             } catch (failure: Exception) {
                 appLog.append("Home APK installer: direct failed (" +
-                    failure.javaClass.simpleName + ")")
+                    failure.javaClass.simpleName + "): " +
+                    (failure.message ?: "unknown").take(220))
                 state.value = state.value.copy(
                     busy = false, pending = false, success = false,
                     message = "Direct installation failed: " +
