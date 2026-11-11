@@ -1,97 +1,96 @@
 package dev.n2k02.localadb
 
-import android.os.Binder
-import android.os.IBinder
-import android.os.Parcel
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.system.Os
+import android.util.Log
 import java.io.FileInputStream
 import java.util.concurrent.TimeUnit
 
 /**
- * Dedicated Shizuku UserService for direct APK installation.
- * A separate service identity avoids older LocalHelperService Binder protocols.
- * Only a read-only APK descriptor is accepted, never shell command text or a path.
+ * Shizuku UserService following the upstream AIDL Stub pattern.
+ * Only APK FD + length may be supplied; all shell arguments are fixed.
+ * Runs as shell UID, with pm installation sessions for structured results.
  */
-class DirectApkInstallService : Binder() {
-    init { attachInterface(null, DESCRIPTOR) }
-
-    override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-        if (code == DESTROY) kotlin.system.exitProcess(0)
-        if (code == COMMAND) {
-            data.enforceInterface(DESCRIPTOR)
-            check(Process.myUid() == Process.SHELL_UID) { "Direct installer requires shell UID" }
-            val operation = data.readString()
-            when (operation) {
-                OP_PING -> {
-                    val challenge = data.readString()
-                    checkNotNull(reply).apply {
-                        writeNoException()
-                        writeInt(Process.myUid())
-                        writeString(challenge)
-                        writeInt(PROTOCOL)
-                    }
-                }
-                OP_INSTALL -> {
-                    val declared = data.readLong()
-                    val apk = ParcelFileDescriptor.CREATOR.createFromParcel(data)
-                    val result = try {
-                        install(apk, declared)
-                    } finally {
-                        apk.close()
-                    }
-                    checkNotNull(reply).apply {
-                        writeNoException()
-                        writeString(result)
-                    }
-                }
-                else -> error("Unsupported APK installer operation")
-            }
-            return true
-        }
-        return super.onTransact(code, data, reply, flags)
+class DirectApkInstallService : IDirectApkInstallService.Stub() {
+    override fun destroy() {
+        // Shizuku's reserved lifecycle method.
+        kotlin.system.exitProcess(0)
     }
 
-    private fun install(apk: ParcelFileDescriptor, bytes: Long): String {
-        require(bytes in 1..ApkInstallPolicy.MAX_APK_BYTES) { "APK size is invalid" }
-        check(Os.fstat(apk.fileDescriptor).st_size == bytes) { "APK size changed" }
-        val process = ProcessBuilder(
-            "/system/bin/pm", "install", "-r", "-t", "-S", bytes.toString(), "-"
-        ).redirectErrorStream(true).start()
+    override fun getServiceUid(): Int = Process.myUid()
+
+    override fun installApk(apk: ParcelFileDescriptor?, length: Long): String {
+        check(Process.myUid() == Process.SHELL_UID) { "Direct install requires ADB shell UID" }
+        requireNotNull(apk) { "APK descriptor missing" }
+        require(length in 1..ApkInstallPolicy.MAX_APK_BYTES) { "Invalid APK size" }
+        check(Os.fstat(apk.fileDescriptor).st_size == length) { "APK size changed" }
+
+        var session: String? = null
         try {
-            var copied = 0L
-            val input = FileInputStream(apk.fileDescriptor)
-            process.outputStream.use { output ->
-                val buffer = ByteArray(64 * 1024)
-                while (copied < bytes) {
-                    val count = input.read(buffer, 0,
-                        minOf(buffer.size.toLong(), bytes - copied).toInt())
-                    check(count > 0) { "APK data ended unexpectedly" }
-                    output.write(buffer, 0, count)
-                    copied += count
+            val created = runCommand(listOf("install-create", "-r", "-t"))
+            session = Regex("""\[(\d+)\]""").find(created)?.groupValues?.get(1)
+                ?: error("Cannot determine package install session: ${created.take(200)}")
+            Log.i(TAG, "Created install session")
+
+            val process = ProcessBuilder(
+                "/system/bin/pm", "install-write", "-S", length.toString(),
+                session, "base.apk", "-"
+            ).redirectErrorStream(true).start()
+            try {
+                var written = 0L
+                val input = FileInputStream(apk.fileDescriptor)
+                process.outputStream.use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (written < length) {
+                        val count = input.read(buffer, 0,
+                            minOf(buffer.size.toLong(), length - written).toInt())
+                        check(count > 0) { "APK stream ended early" }
+                        output.write(buffer, 0, count)
+                        written += count
+                    }
+                    output.flush()
                 }
+                val output = finishCommand(process)
+                check(output.contains("Success", ignoreCase = true)) {
+                    "APK transfer failed: ${output.take(300)}"
+                }
+            } finally {
+                if (process.isAlive) process.destroyForcibly()
             }
-            if (!process.waitFor(180, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-                error("Android package manager timed out")
-            }
-            val output = process.inputStream.bufferedReader().use { it.readText().take(4096) }
-            check(process.exitValue() == 0 && output.lineSequence().any { it.trim() == "Success" }) {
-                output.ifBlank { "Package manager could not install APK" }
-            }
-            return "Success"
+            Log.i(TAG, "APK transfer completed")
+            val outcome = runCommand(listOf("install-commit", session))
+            Log.i(TAG, "Install session committed")
+            session = null
+            return if (outcome.contains("Success", ignoreCase = true)) "Success"
+                else error("Package manager: ${outcome.take(300)}")
         } finally {
+            if (session != null) {
+                runCatching { runCommand(listOf("install-abandon", session)) }
+                Log.w(TAG, "Install session abandoned after failure")
+            }
+            apk.close()
+        }
+    }
+
+    private fun runCommand(args: List<String>): String {
+        val process = ProcessBuilder(listOf("/system/bin/pm") + args)
+            .redirectErrorStream(true).start()
+        return try { finishCommand(process) } finally {
             if (process.isAlive) process.destroyForcibly()
         }
     }
 
+    private fun finishCommand(process: java.lang.Process): String {
+        check(process.waitFor(180, TimeUnit.SECONDS)) { "Package manager timed out" }
+        val output = process.inputStream.bufferedReader().use { it.readText().take(4096) }
+        check(process.exitValue() == 0) {
+            "Package manager returned ${process.exitValue()}: ${output.take(400)}"
+        }
+        return output.trim()
+    }
+
     companion object {
-        const val DESCRIPTOR = "dev.n2k02.localadb.DirectApkInstallService"
-        const val PROTOCOL = 2
-        const val COMMAND = IBinder.FIRST_CALL_TRANSACTION
-        const val OP_PING = "ping"
-        const val OP_INSTALL = "install"
-        const val DESTROY = 16777115
+        private const val TAG = "LocalAdbDirectInstall"
     }
 }
