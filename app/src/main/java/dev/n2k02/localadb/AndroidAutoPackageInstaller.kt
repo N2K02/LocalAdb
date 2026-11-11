@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Parcel
 import android.os.Process
+import android.os.ParcelFileDescriptor
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
@@ -35,6 +36,8 @@ import java.io.FileOutputStream
  * A successful metadata read-back does NOT guarantee Android Auto compatibility.
  */
 internal object AndroidAutoPackageInstaller {
+    enum class ResultStatus { IDLE, INSTALLING, INSTALLED, FAILED, NOT_VERIFIED, CANCELLED }
+
     data class State(
         val packageName: String? = null,
         val version: String = "",
@@ -42,10 +45,13 @@ internal object AndroidAutoPackageInstaller {
         val busy: Boolean = false,
         val pending: Boolean = false,
         val success: Boolean = false,
+        val resultStatus: ResultStatus = ResultStatus.IDLE,
         val message: String = "Select a compatible Android Auto APK to install.",
         // Structured read-back is independent of the free-form error message.
         val initiatingPackage: String? = null,
         val installingPackage: String? = null,
+        val requestedInstaller: String? = null,
+        val attributionStatus: String = "",
         val installMethod: String? = null,
         val details: String = "",
     )
@@ -111,7 +117,7 @@ internal object AndroidAutoPackageInstaller {
                 archive = parsed
                 state.value = State(packageName = parsed.packageName,
                     version = parsed.versionName.orEmpty(), sizeBytes = length,
-                    message = "Ready. Confirm installation to continue.",
+                    message = "APK selected. Choose an installation method.",
                     details = "")
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -135,6 +141,109 @@ internal object AndroidAutoPackageInstaller {
         launch(activity, path)
     }
 
+    /**
+     * Shared safety preflight for the Home Shizuku installer and direct APK flow.
+     * Reject known incompatible updates before a privileged shell install.
+     * Android's package manager remains the final signature authority.
+     */
+    internal fun validateInstallCompatibility(context: Context, apk: java.io.File) {
+        check(apk.isFile && apk.length() in 1..ApkInstallPolicy.MAX_APK_BYTES) {
+            "Selected APK is missing or exceeds the size limit"
+        }
+        @Suppress("DEPRECATION")
+        val parsed = context.packageManager.getPackageArchiveInfo(
+            apk.absolutePath,
+            if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else 0
+        ) ?: error("Invalid APK archive")
+        val old = packageInfo(context, parsed.packageName) ?: return
+        @Suppress("DEPRECATION")
+        val oldCode = if (Build.VERSION.SDK_INT >= 28) old.longVersionCode
+            else old.versionCode.toLong()
+        @Suppress("DEPRECATION")
+        val newCode = if (Build.VERSION.SDK_INT >= 28) parsed.longVersionCode
+            else parsed.versionCode.toLong()
+        check(newCode >= oldCode) {
+            "A newer version is already installed. Downgrade was not requested."
+        }
+        check(compatibleSigner(parsed, old)) {
+            "Installed app uses a different signing certificate; no changes were made."
+        }
+    }
+
+    /**
+     * Home Shizuku installer: direct, confirmation-free APK session under UID 2000.
+     * Never claims Google Play attribution; the separate native path retains
+     * its existing Android Auto/Play compatibility behavior.
+     */
+    fun installDirectFromHome(activity: Activity) {
+        if (state.value.busy || state.value.pending) return
+        val selected = archive ?: return
+        if (!(NativeShizukuManager.state.value.serviceReady && runCatching {
+                Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID
+            }.getOrDefault(false))) {
+            state.value = state.value.copy(
+                resultStatus = ResultStatus.FAILED,
+                message = "Direct install requires the embedded Shizuku shell (UID 2000). " +
+                    "Start Shizuku or select Native install.",
+                details = "Direct shell service unavailable")
+            return
+        }
+        task?.cancel()
+        task = scope.launch {
+            val app = activity.applicationContext
+            val file = AndroidAutoApkProvider.file(app)
+            try {
+                state.value = state.value.copy(
+                    busy = true, pending = false, success = false,
+                    resultStatus = ResultStatus.INSTALLING,
+                    installMethod = "DIRECT_ADB",
+                    initiatingPackage = null, installingPackage = null,
+                    requestedInstaller = null, attributionStatus = "",
+                    message = "Installing selected APK with Shizuku shell…",
+                    details = "")
+                val requestedInstaller = withContext(Dispatchers.IO) {
+                    validateInstallCompatibility(app, file)
+                    DirectInstallAttribution.requestedInstaller(app)
+                }
+                val old = packageInfo(app, selected.packageName)
+                val oldUpdate = old?.lastUpdateTime ?: 0L
+                appLog.append("Home APK installer: direct session started for " + selected.packageName +
+                    "; Play installer-of-record requested=" + (requestedInstaller != null))
+                val result = withContext(Dispatchers.IO) { installDirect(app, file) }
+                check(result == "Success") { "Package manager: $result" }
+                val current = packageInfo(app, selected.packageName)
+                val changed = current != null && (old == null || current.lastUpdateTime > oldUpdate)
+                val source = DirectInstallAttribution.readBack(app, selected.packageName)
+                val verdict = DirectInstallAttribution.verdict(requestedInstaller, source)
+                state.value = state.value.copy(
+                    busy = false, pending = false, success = changed,
+                    resultStatus = if (changed) ResultStatus.INSTALLED else ResultStatus.NOT_VERIFIED,
+                    requestedInstaller = requestedInstaller,
+                    initiatingPackage = source.initiating,
+                    installingPackage = source.installing,
+                    attributionStatus = verdict,
+                    message = if (changed) "Installed using ADB shell. $verdict"
+                        else "Package manager reported success; installed version could not be verified. $verdict",
+                    details = DirectInstallAttribution.sourceDetails(requestedInstaller, source)
+                )
+                appLog.append("Home APK installer: direct commit succeeded; read-back=" + changed +
+                    "; installing=" + source.installing + "; initiating=" + source.initiating)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.append("Home APK installer: direct failed (" +
+                    failure.javaClass.simpleName + "): " +
+                    (failure.message ?: "unknown").take(220))
+                state.value = state.value.copy(
+                    busy = false, pending = false, success = false,
+                    resultStatus = ResultStatus.FAILED,
+                    message = "Direct installation failed: " +
+                        (failure.message ?: failure.javaClass.simpleName).take(250),
+                    details = "Native install remains available.")
+            }
+        }
+    }
+
     private fun compatibleSigner(newApk: PackageInfo, old: PackageInfo): Boolean {
         if (Build.VERSION.SDK_INT < 28) return true
         val installed = old.signingInfo ?: return true // let platform installer decide
@@ -152,7 +261,9 @@ internal object AndroidAutoPackageInstaller {
             val packageName = staged.packageName
             try {
                 state.value = state.value.copy(busy = true, success = false,
+                    resultStatus = ResultStatus.INSTALLING,
                     initiatingPackage = null, installingPackage = null,
+                    requestedInstaller = null, attributionStatus = "",
                     message = "Checking APK and installed version…")
                 val old = packageInfo(activity, packageName)
                 @Suppress("DEPRECATION")
@@ -171,6 +282,7 @@ internal object AndroidAutoPackageInstaller {
                 if ((path == AndroidAutoInstallPolicy.Path.APP || Build.VERSION.SDK_INT <= 34) &&
                     !activity.packageManager.canRequestPackageInstalls()) {
                     state.value = state.value.copy(busy = false, pending = false,
+                        resultStatus = ResultStatus.IDLE,
                         message = "Allow LocalAdb to install unknown apps, then tap Install again.")
                     activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                         Uri.parse("package:" + activity.packageName)))
@@ -231,13 +343,61 @@ internal object AndroidAutoPackageInstaller {
                 throw cancelled
             } catch (failure: Exception) {
                 state.value = state.value.copy(busy = false, pending = false,
+                    resultStatus = ResultStatus.FAILED,
                     message = "Installation could not start: " +
                         (failure.message ?: failure.javaClass.simpleName))
             }
         }
     }
 
-    private suspend fun startWithLocalHelper(activity: Activity, intent: Intent): String {
+    /** Installs one private, validated APK over a read-only descriptor using
+     * the existing Shizuku UID 2000 helper. Keeps the work off the UI thread.
+     */
+    /** AIDL UserService installer based on the upstream Shizuku demo.
+     * The service uses Android package install sessions under shell UID.
+     */
+    internal suspend fun installDirect(context: Context, file: java.io.File): String {
+        check(file.isFile && file.length() in 1..ApkInstallPolicy.MAX_APK_BYTES) {
+            "Selected APK is missing or too large"
+        }
+        check(Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID) {
+            "ADB shell authorization unavailable"
+        }
+        val requestedInstaller = DirectInstallAttribution.requestedInstaller(context)
+        val args = Shizuku.UserServiceArgs(ComponentName(context, DirectApkInstallService::class.java))
+            .tag("direct-apk-aidl-v2")
+            .version(4)
+            .processNameSuffix("apk_aidl_v2")
+            .daemon(false)
+        val attached = CompletableDeferred<IBinder>()
+        val conn = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                if (service != null && service.pingBinder()) attached.complete(service)
+                else attached.completeExceptionally(IllegalStateException("Direct installer service unavailable"))
+            }
+            override fun onServiceDisconnected(name: ComponentName?) {
+                attached.completeExceptionally(IllegalStateException("Direct installer disconnected"))
+            }
+        }
+        Shizuku.bindUserService(args, conn)
+        try {
+            val binder = withTimeout(15_000) { attached.await() }
+            val installer = IDirectApkInstallService.Stub.asInterface(binder)
+                ?: error("Direct installer AIDL service unavailable")
+            check(installer.serviceUid == Process.SHELL_UID) {
+                "Direct installer is not running as shell"
+            }
+            return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                installer.installApk(fd, file.length(), requestedInstaller.orEmpty())
+            }
+        } finally {
+            withContext(NonCancellable) {
+                runCatching { Shizuku.unbindUserService(args, conn, true) }
+            }
+        }
+    }
+
+    internal suspend fun startWithLocalHelper(activity: Activity, intent: Intent): String {
         val args = Shizuku.UserServiceArgs(ComponentName(activity, LocalHelperService::class.java))
             .tag("localhelper-android-auto-installer")
             .version(2)
@@ -296,6 +456,7 @@ internal object AndroidAutoPackageInstaller {
         val now = packageInfo(activity, name)
         if (now == null || now.lastUpdateTime <= previousUpdate) {
             state.value = state.value.copy(pending = false, busy = false,
+                resultStatus = ResultStatus.CANCELLED,
                 message = "Installation was cancelled or rejected. No new installation was detected.")
             return
         }
@@ -313,6 +474,7 @@ internal object AndroidAutoPackageInstaller {
             }
         } catch (failure: Exception) {
             state.value = state.value.copy(pending = false, busy = false,
+                resultStatus = ResultStatus.NOT_VERIFIED,
                 message = "Installed, but install-source verification failed: " + failure.message)
             return
         }
@@ -323,6 +485,7 @@ internal object AndroidAutoPackageInstaller {
                 .edit().putBoolean("shell_works",
                     lastPath == AndroidAutoInstallPolicy.Path.SHELL).apply()
             state.value = state.value.copy(pending = false, success = true,
+                resultStatus = ResultStatus.INSTALLED,
                 initiatingPackage = initiator, installingPackage = installing,
                 message = "Installed with accepted Google Play attribution.",
                 details = "")
@@ -345,9 +508,20 @@ internal object AndroidAutoPackageInstaller {
             }
         }
         state.value = state.value.copy(pending = false, busy = false,
+            resultStatus = ResultStatus.NOT_VERIFIED,
             initiatingPackage = initiator, installingPackage = installing,
             message = "APK installed, but Google Play attribution was not accepted.",
             details = "")
+    }
+
+    /** Discard a selected APK without stopping the Shizuku service.
+     * Only the idle selection can be cleared; a running install must finish.
+     */
+    fun cancelSelection(context: Context) {
+        if (state.value.busy || state.value.pending) return
+        if (archive == null && state.value.packageName == null) return
+        shutdown(context)
+        state.value = State(message = "Selection cancelled. Choose an APK to continue.")
     }
 
     fun shutdown(context: Context) {

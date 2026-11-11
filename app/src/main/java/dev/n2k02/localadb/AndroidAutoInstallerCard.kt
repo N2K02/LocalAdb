@@ -12,6 +12,11 @@ import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.InstallMobile
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.HourglassTop
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.*
@@ -35,6 +40,7 @@ internal fun AndroidAutoInstallerCard() {
     val state by AndroidAutoPackageInstaller.state.collectAsState()
     val server by NativeShizukuManager.state.collectAsState()
     var showDetails by rememberSaveable { mutableStateOf(false) }
+    var playRecord by rememberSaveable { mutableStateOf(DirectInstallAttribution.enabled(context)) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             showDetails = false
@@ -56,17 +62,15 @@ internal fun AndroidAutoInstallerCard() {
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             ModernSectionHeader(
                 title = "Shizuku package installer",
-                subtitle = "Install APKs with Play attribution",
+                subtitle = "Direct ADB install · native fallback",
                 icon = Icons.Rounded.Android,
                 tone = DashboardTone.NEUTRAL,
                 status = when {
                     state.pending || state.busy -> "Working"
-                    state.success -> "Verified"
-                    server.serviceReady -> "Ready"
+                    server.serviceReady -> "ADB ready"
                     else -> "Shizuku offline"
                 },
                 statusTone = when {
-                    state.success -> DashboardTone.GOOD
                     state.pending || state.busy -> DashboardTone.WARN
                     server.serviceReady -> DashboardTone.GOOD
                     else -> DashboardTone.WARN
@@ -80,9 +84,8 @@ internal fun AndroidAutoInstallerCard() {
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
             }
-            Text(state.message, style = MaterialTheme.typography.bodySmall,
-                color = if (state.success) DashboardTone.GOOD.accent
-                    else MaterialTheme.colorScheme.onSurfaceVariant)
+            InstallerResultSummary(state)
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
@@ -101,13 +104,69 @@ internal fun AndroidAutoInstallerCard() {
                     modifier = Modifier.weight(1f),
                     enabled = activity != null && state.packageName != null &&
                         !state.busy && !state.pending,
-                    onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
+                    onClick = { activity?.let(AndroidAutoPackageInstaller::installDirectFromHome) }
                 ) {
                     Icon(Icons.Rounded.InstallMobile, contentDescription = null,
                         modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(5.dp))
                     Text("Install", maxLines = 1)
                 }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Google Play as installer of record",
+                        style = MaterialTheme.typography.labelMedium)
+                    Text("Optional · not genuine Play initiation",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(
+                    checked = playRecord,
+                    enabled = !state.busy && !state.pending,
+                    onCheckedChange = {
+                        playRecord = it
+                        DirectInstallAttribution.setEnabled(context, it)
+                    }
+                )
+            }
+            if (state.packageName != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(0.85f),
+                        enabled = !state.busy && !state.pending,
+                        onClick = {
+                            AndroidAutoPackageInstaller.cancelSelection(context)
+                            showDetails = false
+                        }
+                    ) {
+                        Icon(Icons.Rounded.Close, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Cancel", maxLines = 1)
+                    }
+                    FilledTonalButton(
+                        modifier = Modifier.weight(1.15f),
+                        enabled = activity != null && !state.busy && !state.pending,
+                        shape = MaterialTheme.shapes.extraLarge,
+                        onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
+                    ) {
+                        Icon(Icons.Rounded.PhoneAndroid, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Native install", maxLines = 1)
+                    }
+                }
+                Text("Native install opens Android confirmation.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             val hasDetails = state.packageName != null || state.installMethod != null ||
                 state.initiatingPackage != null || state.installingPackage != null ||
@@ -148,6 +207,69 @@ internal fun AndroidAutoInstallerCard() {
     }
 }
 
+/**
+ * Shows one distinct result chip, separate from Shizuku's connectivity badge.
+ * The description stays readable but no longer looks like an unstructured log.
+ */
+@Composable
+private fun InstallerResultSummary(state: AndroidAutoPackageInstaller.State) {
+    val result = state.resultStatus
+    if (result == AndroidAutoPackageInstaller.ResultStatus.IDLE) {
+        Text(
+            state.message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+    val (label, icon, background, foreground) = when (result) {
+        AndroidAutoPackageInstaller.ResultStatus.INSTALLING ->
+            ResultBadgeStyle("Installing", Icons.Rounded.HourglassTop,
+                MaterialTheme.colorScheme.tertiaryContainer,
+                MaterialTheme.colorScheme.onTertiaryContainer)
+        AndroidAutoPackageInstaller.ResultStatus.INSTALLED ->
+            ResultBadgeStyle("Installed", Icons.Rounded.CheckCircle,
+                MaterialTheme.colorScheme.primaryContainer,
+                MaterialTheme.colorScheme.onPrimaryContainer)
+        AndroidAutoPackageInstaller.ResultStatus.FAILED ->
+            ResultBadgeStyle("Installation failed", Icons.Rounded.ErrorOutline,
+                MaterialTheme.colorScheme.errorContainer,
+                MaterialTheme.colorScheme.onErrorContainer)
+        AndroidAutoPackageInstaller.ResultStatus.CANCELLED ->
+            ResultBadgeStyle("Cancelled or rejected", Icons.Rounded.Info,
+                MaterialTheme.colorScheme.surfaceContainerHighest,
+                MaterialTheme.colorScheme.onSurface)
+        AndroidAutoPackageInstaller.ResultStatus.NOT_VERIFIED ->
+            ResultBadgeStyle("Needs verification", Icons.Rounded.Info,
+                MaterialTheme.colorScheme.tertiaryContainer,
+                MaterialTheme.colorScheme.onTertiaryContainer)
+        AndroidAutoPackageInstaller.ResultStatus.IDLE -> error("Handled above")
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Surface(color = background, shape = MaterialTheme.shapes.extraLarge) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Icon(icon, contentDescription = null, tint = foreground,
+                    modifier = Modifier.size(17.dp))
+                Text(label, style = MaterialTheme.typography.labelMedium,
+                    color = foreground)
+            }
+        }
+        Text(state.message, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private data class ResultBadgeStyle(
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val background: androidx.compose.ui.graphics.Color,
+    val foreground: androidx.compose.ui.graphics.Color,
+)
+
 @Composable
 private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State) {
     Surface(
@@ -163,7 +285,15 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
             if (state.version.isNotBlank()) InstallerDetailRow("Version", "v" + state.version)
             state.installMethod?.let {
                 InstallerDetailRow("Method",
-                    if (it == "SHELL") "Shizuku · shell" else "System installer")
+                    when (it) {
+                        "DIRECT_ADB" -> "ADB shell · direct"
+                        "SHELL" -> "Shizuku · system installer"
+                        else -> "System installer"
+                    })
+            }
+            if (state.attributionStatus.isNotBlank()) {
+                Text(state.attributionStatus, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (state.initiatingPackage != null || state.installingPackage != null) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -192,7 +322,9 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                         modifier = Modifier.size(17.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        "Google Play attribution does not guarantee this app will appear in Android Auto.",
+                        if (state.installMethod == "DIRECT_ADB")
+                            "Direct ADB installs do not claim Google Play attribution. The chosen installer of record may differ from the actual initiator."
+                        else "Google Play attribution does not guarantee this app will appear in Android Auto.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),

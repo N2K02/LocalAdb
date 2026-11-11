@@ -58,6 +58,59 @@ class CompactHomeInstallerUiTest {
         assertTrue(ui.contains("SelectionContainer"))
     }
 
+    @Test fun shizukuHomeInstallerDefaultsToDirectAndOffersNativeFallback() {
+        val ui = source("AndroidAutoInstallerCard.kt")
+        val installer = source("AndroidAutoPackageInstaller.kt")
+        assertTrue(ui.contains("AndroidAutoPackageInstaller::installDirectFromHome"))
+        assertTrue(ui.contains("AndroidAutoPackageInstaller::install"))
+        assertTrue(ui.contains("Text(\"Native install\""))
+        assertTrue(ui.contains("Native install opens Android confirmation."))
+        assertTrue(ui.contains("Google Play as installer of record"))
+        assertTrue(ui.contains("DirectInstallAttribution.setEnabled(context, it)"))
+        assertTrue(installer.contains("requestedInstaller = requestedInstaller"))
+        assertTrue(installer.contains("initiatingPackage = source.initiating"))
+        assertTrue(installer.contains("installingPackage = source.installing"))
+        assertTrue(ui.contains("Direct ADB installs do not claim Google Play attribution."))
+        assertTrue(installer.contains("fun installDirectFromHome(activity: Activity)"))
+        assertTrue(installer.contains("validateInstallCompatibility(app, file)"))
+        assertTrue(installer.contains("installDirect(app, file)"))
+        assertTrue(installer.contains("state.value.copy("))
+        assertTrue(installer.contains("Package manager reported success"))
+    }
+
+    @Test fun resultBadgeIsSeparateFromAdbReadinessAndNativeActionIsProminent() {
+        val ui = source("AndroidAutoInstallerCard.kt")
+        val controller = source("AndroidAutoPackageInstaller.kt")
+        assertTrue(ui.contains("InstallerResultSummary(state)"))
+        assertTrue(ui.contains("ResultBadgeStyle(\"Installation failed\""))
+        assertTrue(ui.contains("ResultBadgeStyle(\"Cancelled or rejected\""))
+        assertTrue(ui.contains("ResultBadgeStyle(\"Installed\""))
+        assertTrue(ui.contains("server.serviceReady -> \"ADB ready\""))
+        assertTrue(ui.contains("FilledTonalButton("))
+        assertTrue(ui.contains("onClick = { activity?.let(AndroidAutoPackageInstaller::install) }"))
+        assertTrue(ui.contains("Text(\"Native install · Android confirmation\""))
+        assertFalse(ui.contains("TextButton(\n                enabled = activity != null"))
+        assertTrue(controller.contains("enum class ResultStatus"))
+        assertTrue(controller.contains("resultStatus = ResultStatus.CANCELLED"))
+        assertTrue(controller.contains("resultStatus = ResultStatus.FAILED"))
+        assertTrue(controller.contains("resultStatus = ResultStatus.INSTALLED"))
+    }
+
+    @Test fun selectedApkHasCancelActionThatDiscardsStateAndFileOnlyWhenIdle() {
+        val ui = source("AndroidAutoInstallerCard.kt")
+        val installer = source("AndroidAutoPackageInstaller.kt")
+        assertTrue(ui.contains("AndroidAutoPackageInstaller.cancelSelection(context)"))
+        assertTrue(ui.contains("Text(\"Cancel\", maxLines = 1)"))
+        assertTrue(ui.contains("showDetails = false"))
+        assertTrue(ui.contains("Text(\"Native install\", maxLines = 1)"))
+        assertTrue(installer.contains("fun cancelSelection(context: Context)"))
+        assertTrue(installer.contains("if (state.value.busy || state.value.pending) return"))
+        assertTrue(installer.contains("shutdown(context)"))
+        assertTrue(installer.contains("archive = null"))
+        assertTrue(installer.contains("AndroidAutoApkProvider.file(context).delete()"))
+        assertTrue(installer.contains("context.revokeUriPermission("))
+    }
+
     @Test fun installerRemainsLastCardAndBottomNavigationIsUnchanged() {
         val main = source("LocalAdbScreen.kt")
         val home = main.substringAfter("private fun HomePage(")
