@@ -58,6 +58,20 @@ class CompactHomeInstallerUiTest {
         assertTrue(ui.contains("SelectionContainer"))
     }
 
+    @Test fun shizukuHomeInstallerDefaultsToDirectAndOffersNativeFallback() {
+        val ui = source("AndroidAutoInstallerCard.kt")
+        val installer = source("AndroidAutoPackageInstaller.kt")
+        assertTrue(ui.contains("AndroidAutoPackageInstaller::installDirectFromHome"))
+        assertTrue(ui.contains("AndroidAutoPackageInstaller::install"))
+        assertTrue(ui.contains("Native install · Android confirmation"))
+        assertTrue(ui.contains("Direct ADB installs do not claim Google Play attribution."))
+        assertTrue(installer.contains("fun installDirectFromHome(activity: Activity)"))
+        assertTrue(installer.contains("validateInstallCompatibility(app, file)"))
+        assertTrue(installer.contains("installDirect(app, file)"))
+        assertTrue(installer.contains("state.value.copy("))
+        assertTrue(installer.contains("Package manager reported success"))
+    }
+
     @Test fun installerRemainsLastCardAndBottomNavigationIsUnchanged() {
         val main = source("LocalAdbScreen.kt")
         val home = main.substringAfter("private fun HomePage(")
