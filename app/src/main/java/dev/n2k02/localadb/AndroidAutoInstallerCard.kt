@@ -12,6 +12,10 @@ import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.InstallMobile
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.HourglassTop
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.*
@@ -62,12 +66,10 @@ internal fun AndroidAutoInstallerCard() {
                 tone = DashboardTone.NEUTRAL,
                 status = when {
                     state.pending || state.busy -> "Working"
-                    state.success -> "Verified"
-                    server.serviceReady -> "Ready"
+                    server.serviceReady -> "ADB ready"
                     else -> "Shizuku offline"
                 },
                 statusTone = when {
-                    state.success -> DashboardTone.GOOD
                     state.pending || state.busy -> DashboardTone.WARN
                     server.serviceReady -> DashboardTone.GOOD
                     else -> DashboardTone.WARN
@@ -81,9 +83,8 @@ internal fun AndroidAutoInstallerCard() {
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
             }
-            Text(state.message, style = MaterialTheme.typography.bodySmall,
-                color = if (state.success) DashboardTone.GOOD.accent
-                    else MaterialTheme.colorScheme.onSurfaceVariant)
+            InstallerResultSummary(state)
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     modifier = Modifier.weight(1f),
@@ -131,14 +132,17 @@ internal fun AndroidAutoInstallerCard() {
                     }
                 )
             }
-            TextButton(
+            FilledTonalButton(
+                modifier = Modifier.fillMaxWidth(),
                 enabled = activity != null && state.packageName != null &&
                     !state.busy && !state.pending,
-                onClick = { activity?.let(AndroidAutoPackageInstaller::install) },
-                modifier = Modifier.align(Alignment.End)
+                shape = MaterialTheme.shapes.extraLarge,
+                onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
             ) {
-                Text("Native install · Android confirmation",
-                    style = MaterialTheme.typography.labelMedium)
+                Icon(Icons.Rounded.PhoneAndroid, contentDescription = null,
+                    modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Native install · Android confirmation", maxLines = 1)
             }
             val hasDetails = state.packageName != null || state.installMethod != null ||
                 state.initiatingPackage != null || state.installingPackage != null ||
@@ -178,6 +182,69 @@ internal fun AndroidAutoInstallerCard() {
         }
     }
 }
+
+/**
+ * Shows one distinct result chip, separate from Shizuku's connectivity badge.
+ * The description stays readable but no longer looks like an unstructured log.
+ */
+@Composable
+private fun InstallerResultSummary(state: AndroidAutoPackageInstaller.State) {
+    val result = state.resultStatus
+    if (result == AndroidAutoPackageInstaller.ResultStatus.IDLE) {
+        Text(
+            state.message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+    val (label, icon, background, foreground) = when (result) {
+        AndroidAutoPackageInstaller.ResultStatus.INSTALLING ->
+            ResultBadgeStyle("Installing", Icons.Rounded.HourglassTop,
+                MaterialTheme.colorScheme.tertiaryContainer,
+                MaterialTheme.colorScheme.onTertiaryContainer)
+        AndroidAutoPackageInstaller.ResultStatus.INSTALLED ->
+            ResultBadgeStyle("Installed", Icons.Rounded.CheckCircle,
+                MaterialTheme.colorScheme.primaryContainer,
+                MaterialTheme.colorScheme.onPrimaryContainer)
+        AndroidAutoPackageInstaller.ResultStatus.FAILED ->
+            ResultBadgeStyle("Installation failed", Icons.Rounded.ErrorOutline,
+                MaterialTheme.colorScheme.errorContainer,
+                MaterialTheme.colorScheme.onErrorContainer)
+        AndroidAutoPackageInstaller.ResultStatus.CANCELLED ->
+            ResultBadgeStyle("Cancelled or rejected", Icons.Rounded.Info,
+                MaterialTheme.colorScheme.surfaceContainerHighest,
+                MaterialTheme.colorScheme.onSurface)
+        AndroidAutoPackageInstaller.ResultStatus.NOT_VERIFIED ->
+            ResultBadgeStyle("Needs verification", Icons.Rounded.Info,
+                MaterialTheme.colorScheme.tertiaryContainer,
+                MaterialTheme.colorScheme.onTertiaryContainer)
+        AndroidAutoPackageInstaller.ResultStatus.IDLE -> error("Handled above")
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Surface(color = background, shape = MaterialTheme.shapes.extraLarge) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                Icon(icon, contentDescription = null, tint = foreground,
+                    modifier = Modifier.size(17.dp))
+                Text(label, style = MaterialTheme.typography.labelMedium,
+                    color = foreground)
+            }
+        }
+        Text(state.message, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private data class ResultBadgeStyle(
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val background: androidx.compose.ui.graphics.Color,
+    val foreground: androidx.compose.ui.graphics.Color,
+)
 
 @Composable
 private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State) {
