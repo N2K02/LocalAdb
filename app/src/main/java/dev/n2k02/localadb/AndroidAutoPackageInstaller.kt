@@ -339,10 +339,11 @@ internal object AndroidAutoPackageInstaller {
         check(Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID) {
             "ADB shell authorization unavailable"
         }
+        val requestedInstaller = DirectInstallAttribution.requestedInstaller(context)
         val args = Shizuku.UserServiceArgs(ComponentName(context, DirectApkInstallService::class.java))
-            .tag("direct-apk-aidl-v1")
-            .version(3)
-            .processNameSuffix("apk_aidl_v1")
+            .tag("direct-apk-aidl-v2")
+            .version(4)
+            .processNameSuffix("apk_aidl_v2")
             .daemon(false)
         val attached = CompletableDeferred<IBinder>()
         val conn = object : ServiceConnection {
@@ -363,7 +364,7 @@ internal object AndroidAutoPackageInstaller {
                 "Direct installer is not running as shell"
             }
             return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-                installer.installApk(fd, file.length())
+                installer.installApk(fd, file.length(), requestedInstaller.orEmpty())
             }
         } finally {
             withContext(NonCancellable) {
