@@ -57,7 +57,9 @@ class DirectInstallAttributionTest {
 
     @Test fun defaultShellModeReportsObservedSourceWithoutPlayClaims() {
         val source = DirectInstallAttribution.Source(true, "com.android.shell", null)
-        assertTrue(policy.verdict(null, source).contains("recorded by Android"))
+        assertTrue(policy.verdict(null, source).contains("did not report an installer"))
         assertTrue(policy.sourceDetails(null, source).contains("Requested installer: System default"))
+        assertTrue(policy.verdict(null, DirectInstallAttribution.Source(true,
+            "com.android.shell", "com.android.shell")).contains("recorded by Android"))
     }
 }
