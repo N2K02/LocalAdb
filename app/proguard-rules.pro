@@ -9,7 +9,7 @@
 # Shizuku instantiates the diagnostic helper with its public no-argument constructor.
 -keep class dev.n2k02.localadb.LocalHelperService { public <init>(); }
 # The dedicated direct APK Shizuku service is instantiated reflectively.
--keep class dev.n2k02.localadb.DirectApkInstallService { public <init>(); }
+-keep class dev.n2k02.localadb.DirectApkInstallService { *; }
 
 # WorkManager uses Room's reflective generated database factory during AndroidX
 # Startup ContentProvider initialization, before our Activity is created.
