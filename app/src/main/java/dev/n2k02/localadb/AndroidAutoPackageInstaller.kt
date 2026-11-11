@@ -245,10 +245,10 @@ internal object AndroidAutoPackageInstaller {
         check(file.isFile && file.length() in 1..ApkInstallPolicy.MAX_APK_BYTES) {
             "Selected APK is missing or too large"
         }
-        val args = Shizuku.UserServiceArgs(ComponentName(context, LocalHelperService::class.java))
-            .tag("localhelper-direct-apk-installer-v3")
-            .version(3)
-            .processNameSuffix("direct_apk_installer")
+        val args = Shizuku.UserServiceArgs(ComponentName(context, DirectApkInstallService::class.java))
+            .tag("direct-apk-install-service")
+            .version(1)
+            .processNameSuffix("apk_installer_v1")
             .daemon(false)
         val attached = CompletableDeferred<IBinder>()
         val conn = object : ServiceConnection {
@@ -264,15 +264,36 @@ internal object AndroidAutoPackageInstaller {
         try {
             val binder = withTimeout(15_000) { attached.await() }
             check(binder.pingBinder()) { "ADB helper disconnected before installation" }
+            // Confirm that this is the new direct-install service, not a stale
+            // Android Auto helper or a Shizuku Binder proxy with another protocol.
+            val challenge = java.util.UUID.randomUUID().toString()
+            val pingRequest = Parcel.obtain()
+            val pingResponse = Parcel.obtain()
+            try {
+                pingRequest.writeInterfaceToken(DirectApkInstallService.DESCRIPTOR)
+                pingRequest.writeString(challenge)
+                check(binder.transact(DirectApkInstallService.PING, pingRequest, pingResponse, 0)) {
+                    "Direct-install service did not accept protocol handshake"
+                }
+                pingResponse.readException()
+                check(pingResponse.readInt() == Process.SHELL_UID &&
+                    pingResponse.readString() == challenge &&
+                    pingResponse.readInt() == DirectApkInstallService.PROTOCOL) {
+                    "Direct-install service identity or protocol mismatch"
+                }
+            } finally {
+                pingResponse.recycle()
+                pingRequest.recycle()
+            }
             val request = Parcel.obtain()
             val response = Parcel.obtain()
             try {
                 ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-                    request.writeInterfaceToken(LocalHelperService.DESCRIPTOR)
+                    request.writeInterfaceToken(DirectApkInstallService.DESCRIPTOR)
                     request.writeLong(file.length())
                     fd.writeToParcel(request, 0)
-                    check(binder.transact(LocalHelperService.INSTALL_APK_DIRECT, request, response, 0)) {
-                        "ADB helper does not support direct installation. Reconnect LocalADB and retry."
+                    check(binder.transact(DirectApkInstallService.INSTALL, request, response, 0)) {
+                        "Direct-install service rejected the APK request (protocol mismatch)."
                     }
                     response.readException()
                     return response.readString().orEmpty()
