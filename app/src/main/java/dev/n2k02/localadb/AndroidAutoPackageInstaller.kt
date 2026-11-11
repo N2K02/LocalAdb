@@ -136,6 +136,35 @@ internal object AndroidAutoPackageInstaller {
         launch(activity, path)
     }
 
+    /**
+     * Shared safety preflight for the Home Shizuku installer and direct APK flow.
+     * Reject known incompatible updates before a privileged shell install.
+     * Android's package manager remains the final signature authority.
+     */
+    internal fun validateInstallCompatibility(context: Context, apk: java.io.File) {
+        check(apk.isFile && apk.length() in 1..ApkInstallPolicy.MAX_APK_BYTES) {
+            "Selected APK is missing or exceeds the size limit"
+        }
+        @Suppress("DEPRECATION")
+        val parsed = context.packageManager.getPackageArchiveInfo(
+            apk.absolutePath,
+            if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else 0
+        ) ?: error("Invalid APK archive")
+        val old = packageInfo(context, parsed.packageName) ?: return
+        @Suppress("DEPRECATION")
+        val oldCode = if (Build.VERSION.SDK_INT >= 28) old.longVersionCode
+            else old.versionCode.toLong()
+        @Suppress("DEPRECATION")
+        val newCode = if (Build.VERSION.SDK_INT >= 28) parsed.longVersionCode
+            else parsed.versionCode.toLong()
+        check(newCode >= oldCode) {
+            "A newer version is already installed. Downgrade was not requested."
+        }
+        check(compatibleSigner(parsed, old)) {
+            "Installed app uses a different signing certificate; no changes were made."
+        }
+    }
+
     private fun compatibleSigner(newApk: PackageInfo, old: PackageInfo): Boolean {
         if (Build.VERSION.SDK_INT < 28) return true
         val installed = old.signingInfo ?: return true // let platform installer decide
