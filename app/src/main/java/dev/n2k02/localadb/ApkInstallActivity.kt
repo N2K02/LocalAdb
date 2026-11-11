@@ -1,12 +1,10 @@
 package dev.n2k02.localadb
 
 import android.content.ClipData
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.os.Process
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -43,12 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.lifecycleScope
 import dev.n2k02.theme.N2K02Theme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import rikka.shizuku.Shizuku
 
 /** User-initiated APK entry point. Uses the same theme and Material 3 as LocalADB. */
 class ApkInstallActivity : ComponentActivity() {
@@ -115,7 +108,7 @@ class ApkInstallActivity : ComponentActivity() {
                         ApkInstallUiState.Phase.STAGING -> "Preparing APK"
                         ApkInstallUiState.Phase.READY -> "Ready to install"
                         ApkInstallUiState.Phase.PERMISSION -> "Allow installation"
-                        ApkInstallUiState.Phase.INSTALLING -> "Opening Android installer"
+                        ApkInstallUiState.Phase.INSTALLING -> "Installing via ADB"
                         ApkInstallUiState.Phase.VERIFYING -> "Check installation"
                         ApkInstallUiState.Phase.RESULT -> "Installation result"
                         ApkInstallUiState.Phase.ERROR -> "Couldn't open APK"
@@ -172,7 +165,7 @@ class ApkInstallActivity : ComponentActivity() {
                     }
                     if (ready) {
                         Text(
-                            "Android will ask you to confirm before installing this app.",
+                            "Install directly using the connected ADB shell, or choose Native install for Android’s confirmation screen.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -197,7 +190,7 @@ class ApkInstallActivity : ComponentActivity() {
                 when (state.phase) {
                     ApkInstallUiState.Phase.READY ->
                         Button(
-                            onClick = ::openStandardInstaller,
+                            onClick = model::installWithAdb,
                             shape = MaterialTheme.shapes.extraLarge
                         ) {
                             Icon(Icons.Rounded.InstallMobile, contentDescription = null,
@@ -227,13 +220,13 @@ class ApkInstallActivity : ComponentActivity() {
                                 Text("Cancel")
                             }
                             FilledTonalButton(
-                                onClick = ::openAdbInstaller,
+                                onClick = ::openStandardInstaller,
                                 shape = MaterialTheme.shapes.extraLarge
-                            ) { Text("ADB-assisted") }
+                            ) { Text("Native install") }
                         }
                     ApkInstallUiState.Phase.PERMISSION ->
                         TextButton(onClick = {
-                            model.resetReady("You can use ADB-assisted installation instead.")
+                            model.resetReady("Connect ADB or choose Native install.")
                         }) { Text("Back") }
                     ApkInstallUiState.Phase.VERIFYING ->
                         TextButton(onClick = { model.abandon(); finish() }) { Text("Close") }
@@ -280,52 +273,6 @@ class ApkInstallActivity : ComponentActivity() {
             appLog.append("APK installer: native confirmation launched")
         } catch (failure: Exception) {
             reportFailure("System installer unavailable: ${failure.message}")
-        }
-    }
-
-    private fun openAdbInstaller() {
-        if (model.state.value.phase != ApkInstallUiState.Phase.READY) return
-        val ready = NativeShizukuManager.state.value.serviceReady && runCatching {
-            Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID
-        }.getOrDefault(false)
-        if (!ready) {
-            model.resetReady("ADB-assisted installer requires an active UID 2000 Shizuku connection.")
-            return
-        }
-        val candidates = listOf(AndroidAutoInstallPolicy.GOOGLE_INSTALLER,
-            AndroidAutoInstallPolicy.AOSP_INSTALLER)
-        val selected = candidates.firstOrNull { flat ->
-            ComponentName.unflattenFromString(flat)?.let { component ->
-                runCatching { packageManager.getActivityInfo(component, 0) }.isSuccess
-            } == true
-        }
-        if (selected == null) {
-            model.resetReady("No supported privileged installer found; use the standard installer.")
-            return
-        }
-        val request = installerIntent().apply {
-            component = ComponentName.unflattenFromString(selected)
-        }
-        runCatching {
-            grantUriPermission(request.component!!.packageName, model.stagedUri(),
-                Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }.onFailure {
-            model.resetReady("Could not grant APK access. Try the standard installer.")
-            return
-        }
-        model.installing()
-        lifecycleScope.launch {
-            try {
-                val outcome = withContext(Dispatchers.IO) {
-                    AndroidAutoPackageInstaller.startWithLocalHelper(
-                        this@ApkInstallActivity, request)
-                }
-                check(outcome == "ok") { outcome }
-                appLog.append("APK installer: ADB-assisted native prompt launched")
-                model.markAwaitingVerification()
-            } catch (failure: Exception) {
-                reportFailure("ADB-assisted launch failed: ${failure.message}. Use Install instead.")
-            }
         }
     }
 
