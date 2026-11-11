@@ -28,7 +28,7 @@ internal data class ApkInstallUiState(
     val message: String = "",
     val phase: Phase = Phase.STAGING,
 ) {
-    enum class Phase { STAGING, READY, PERMISSION, INSTALLING, VERIFYING, RESULT, ERROR }
+    enum class Phase { STAGING, READY, PERMISSION, INSTALLING, RESULT, ERROR }
 }
 
 /** Retained across configuration changes; each invocation stages its own immutable APK. */
@@ -157,11 +157,6 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.INSTALLING)
     }
 
-    fun markAwaitingVerification() {
-        state.value = state.value.copy(phase = ApkInstallUiState.Phase.VERIFYING,
-            message = "Return after confirming in Android’s installer, then tap Verify.")
-    }
-
     fun permissionRequired() {
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.PERMISSION)
         appLog.append("APK installer: install-source permission required")
@@ -191,16 +186,14 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
     }
 
     fun abandon() {
-        if (state.value.phase == ApkInstallUiState.Phase.INSTALLING ||
-            state.value.phase == ApkInstallUiState.Phase.VERIFYING) return
+        if (state.value.phase == ApkInstallUiState.Phase.INSTALLING) return
         app.revokeUriPermission(stagedUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION)
         ApkInstallProvider.cleanup(app, session)
     }
 
     override fun onCleared() {
         // Do not remove content while a system installer may still be reading it.
-        if (state.value.phase != ApkInstallUiState.Phase.INSTALLING &&
-            state.value.phase != ApkInstallUiState.Phase.VERIFYING && !pendingCleanup) abandon()
+        if (state.value.phase != ApkInstallUiState.Phase.INSTALLING && !pendingCleanup) abandon()
         super.onCleared()
     }
 }
