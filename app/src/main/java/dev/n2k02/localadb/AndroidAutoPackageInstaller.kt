@@ -47,6 +47,8 @@ internal object AndroidAutoPackageInstaller {
         // Structured read-back is independent of the free-form error message.
         val initiatingPackage: String? = null,
         val installingPackage: String? = null,
+        val requestedInstaller: String? = null,
+        val attributionStatus: String = "",
         val installMethod: String? = null,
         val details: String = "",
     )
@@ -193,22 +195,32 @@ internal object AndroidAutoPackageInstaller {
                     initiatingPackage = null, installingPackage = null,
                     message = "Installing selected APK with Shizuku shell…",
                     details = "")
-                validateInstallCompatibility(app, file)
+                val requestedInstaller = withContext(Dispatchers.IO) {
+                    validateInstallCompatibility(app, file)
+                    DirectInstallAttribution.requestedInstaller(app)
+                }
                 val old = packageInfo(app, selected.packageName)
                 val oldUpdate = old?.lastUpdateTime ?: 0L
-                appLog.append("Home APK installer: direct session started for " + selected.packageName)
+                appLog.append("Home APK installer: direct session started for " + selected.packageName +
+                    "; Play installer-of-record requested=" + (requestedInstaller != null))
                 val result = withContext(Dispatchers.IO) { installDirect(app, file) }
                 check(result == "Success") { "Package manager: $result" }
                 val current = packageInfo(app, selected.packageName)
-                val changed = current != null &&
-                    (old == null || current.lastUpdateTime > oldUpdate)
+                val changed = current != null && (old == null || current.lastUpdateTime > oldUpdate)
+                val source = DirectInstallAttribution.readBack(app, selected.packageName)
+                val verdict = DirectInstallAttribution.verdict(requestedInstaller, source)
                 state.value = state.value.copy(
-                    busy = false, pending = false, success = true,
-                    message = if (changed) "Installed successfully using ADB shell."
-                        else "Package manager reported success; installed version read-back unavailable.",
-                    details = if (changed) "Installed package verified" else
-                        "Installation was committed; verify package status on this device")
-                appLog.append("Home APK installer: direct commit succeeded; read-back=" + changed)
+                    busy = false, pending = false, success = changed,
+                    requestedInstaller = requestedInstaller,
+                    initiatingPackage = source.initiating,
+                    installingPackage = source.installing,
+                    attributionStatus = verdict,
+                    message = if (changed) "Installed using ADB shell. $verdict"
+                        else "Package manager reported success; installed version could not be verified. $verdict",
+                    details = DirectInstallAttribution.sourceDetails(requestedInstaller, source)
+                )
+                appLog.append("Home APK installer: direct commit succeeded; read-back=" + changed +
+                    "; installing=" + source.installing + "; initiating=" + source.initiating)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
