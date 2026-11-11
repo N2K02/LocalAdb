@@ -246,9 +246,9 @@ internal object AndroidAutoPackageInstaller {
             "Selected APK is missing or too large"
         }
         val args = Shizuku.UserServiceArgs(ComponentName(context, DirectApkInstallService::class.java))
-            .tag("direct-apk-install-service")
-            .version(1)
-            .processNameSuffix("apk_installer_v1")
+            .tag("direct-apk-install-service-v2")
+            .version(2)
+            .processNameSuffix("apk_installer_v2")
             .daemon(false)
         val attached = CompletableDeferred<IBinder>()
         val conn = object : ServiceConnection {
@@ -271,8 +271,9 @@ internal object AndroidAutoPackageInstaller {
             val pingResponse = Parcel.obtain()
             try {
                 pingRequest.writeInterfaceToken(DirectApkInstallService.DESCRIPTOR)
+                pingRequest.writeString(DirectApkInstallService.OP_PING)
                 pingRequest.writeString(challenge)
-                check(binder.transact(DirectApkInstallService.PING, pingRequest, pingResponse, 0)) {
+                check(binder.transact(DirectApkInstallService.COMMAND, pingRequest, pingResponse, 0)) {
                     "Direct-install service did not accept protocol handshake"
                 }
                 pingResponse.readException()
@@ -290,10 +291,11 @@ internal object AndroidAutoPackageInstaller {
             try {
                 ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
                     request.writeInterfaceToken(DirectApkInstallService.DESCRIPTOR)
+                    request.writeString(DirectApkInstallService.OP_INSTALL)
                     request.writeLong(file.length())
                     fd.writeToParcel(request, 0)
-                    check(binder.transact(DirectApkInstallService.INSTALL, request, response, 0)) {
-                        "Direct-install service rejected the APK request (protocol mismatch)."
+                    check(binder.transact(DirectApkInstallService.COMMAND, request, response, 0)) {
+                        "Direct-install service did not accept the install operation."
                     }
                     response.readException()
                     return response.readString().orEmpty()
