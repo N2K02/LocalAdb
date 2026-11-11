@@ -44,6 +44,7 @@ class ApkInstallContractTest {
         assertTrue(helper.contains("Os.fstat(apk.fileDescriptor)"))
         assertTrue(helper.contains("\"-S\", bytes.toString(), \"-\""))
         assertTrue(installer.contains("ParcelFileDescriptor.MODE_READ_ONLY"))
+        assertTrue(installer.contains(".version(3)"))
         assertFalse(activity.contains("ADB-assisted"))
     }
 
@@ -55,6 +56,9 @@ class ApkInstallContractTest {
         assertTrue(code.contains("ActivityResultContracts.StartActivityForResult()"))
         assertTrue(code.contains("model.complete("))
         assertTrue(code.contains("model::installWithAdb"))
+        assertTrue(code.contains("MaterialTheme.colorScheme.errorContainer"))
+        assertTrue(code.contains("state.isError"))
+        assertTrue(code.contains("APK size:"))
         assertFalse(code.contains("android.app.AlertDialog"))
     }
 
