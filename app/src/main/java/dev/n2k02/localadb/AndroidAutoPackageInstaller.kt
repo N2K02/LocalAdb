@@ -193,6 +193,7 @@ internal object AndroidAutoPackageInstaller {
                     busy = true, pending = false, success = false,
                     installMethod = "DIRECT_ADB",
                     initiatingPackage = null, installingPackage = null,
+                    requestedInstaller = null, attributionStatus = "",
                     message = "Installing selected APK with Shizuku shell…",
                     details = "")
                 val requestedInstaller = withContext(Dispatchers.IO) {
@@ -254,6 +255,7 @@ internal object AndroidAutoPackageInstaller {
             try {
                 state.value = state.value.copy(busy = true, success = false,
                     initiatingPackage = null, installingPackage = null,
+                    requestedInstaller = null, attributionStatus = "",
                     message = "Checking APK and installed version…")
                 val old = packageInfo(activity, packageName)
                 @Suppress("DEPRECATION")
