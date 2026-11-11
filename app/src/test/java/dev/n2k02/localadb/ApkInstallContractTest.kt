@@ -102,6 +102,24 @@ class ApkInstallContractTest {
         assertFalse(code.contains("android.app.AlertDialog"))
     }
 
+    @Test fun intentInstallerShowsDistinctOutcomeBadgesAndKeepsFailureDetails() {
+        val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val viewModel = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(viewModel.contains("enum class Outcome { NONE, SUCCESS, FAILED, CANCELLED, UNVERIFIED }"))
+        assertTrue(viewModel.contains("cancelled -> ApkInstallUiState.Outcome.CANCELLED"))
+        assertTrue(viewModel.contains("resultSuccess && verified -> ApkInstallUiState.Outcome.SUCCESS"))
+        assertTrue(viewModel.contains("resultSuccess -> ApkInstallUiState.Outcome.UNVERIFIED"))
+        assertTrue(viewModel.contains("else -> ApkInstallUiState.Outcome.FAILED"))
+        assertTrue(activity.contains("state.outcome != ApkInstallUiState.Outcome.NONE"))
+        assertTrue(activity.contains("InstallerOutcomeBadge("))
+        assertTrue(activity.contains("\\"Installed\\""))
+        assertTrue(activity.contains("\\"Installation failed\\""))
+        assertTrue(activity.contains("\\"Cancelled\\""))
+        assertTrue(activity.contains("\\"Needs verification\\""))
+        assertTrue(activity.contains("state.message.isNotBlank()"))
+        assertTrue(activity.contains("state.sourceDetails.isNotBlank()"))
+    }
+
     @Test fun lifecycleStateRetainedUntilInstallerResult() {
         val code = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
         assertTrue(code.contains("AndroidViewModel"))
