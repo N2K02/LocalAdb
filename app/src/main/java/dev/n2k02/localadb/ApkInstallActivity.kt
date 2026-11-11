@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.InstallMobile
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ElevatedCard
@@ -205,6 +207,43 @@ class ApkInstallActivity : ComponentActivity() {
                         Text("Allow LocalADB to install apps from this source in Android settings.",
                             style = MaterialTheme.typography.bodyMedium)
                     }
+                    if (state.outcome != ApkInstallUiState.Outcome.NONE) {
+                        val (label, icon, background, foreground) = when (state.outcome) {
+                            ApkInstallUiState.Outcome.SUCCESS -> InstallerOutcomeBadge(
+                                "Installed", Icons.Rounded.CheckCircle,
+                                MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.onPrimaryContainer)
+                            ApkInstallUiState.Outcome.FAILED -> InstallerOutcomeBadge(
+                                "Installation failed", Icons.Rounded.ErrorOutline,
+                                MaterialTheme.colorScheme.errorContainer,
+                                MaterialTheme.colorScheme.onErrorContainer)
+                            ApkInstallUiState.Outcome.CANCELLED -> InstallerOutcomeBadge(
+                                "Cancelled", Icons.Rounded.Info,
+                                MaterialTheme.colorScheme.surfaceContainerHighest,
+                                MaterialTheme.colorScheme.onSurface)
+                            ApkInstallUiState.Outcome.UNVERIFIED -> InstallerOutcomeBadge(
+                                "Needs verification", Icons.Rounded.Info,
+                                MaterialTheme.colorScheme.tertiaryContainer,
+                                MaterialTheme.colorScheme.onTertiaryContainer)
+                            ApkInstallUiState.Outcome.NONE -> error("Handled above")
+                        }
+                        Surface(
+                            shape = MaterialTheme.shapes.extraLarge,
+                            color = background,
+                            modifier = Modifier.align(Alignment.Start)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(icon, contentDescription = null, tint = foreground,
+                                    modifier = Modifier.size(18.dp))
+                                Text(label, color = foreground,
+                                    style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                    }
                     if (state.message.isNotBlank()) {
                         if (state.isError || state.phase == ApkInstallUiState.Phase.ERROR) {
                             Surface(
@@ -294,6 +333,13 @@ class ApkInstallActivity : ComponentActivity() {
             }
         }
     }
+
+    private data class InstallerOutcomeBadge(
+        val label: String,
+        val icon: androidx.compose.ui.graphics.vector.ImageVector,
+        val background: androidx.compose.ui.graphics.Color,
+        val foreground: androidx.compose.ui.graphics.Color
+    )
 
     private fun requestUnknownSources() {
         try {
