@@ -56,7 +56,7 @@ internal fun AndroidAutoInstallerCard() {
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             ModernSectionHeader(
                 title = "Shizuku package installer",
-                subtitle = "Install APKs with Play attribution",
+                subtitle = "Direct ADB install · native fallback",
                 icon = Icons.Rounded.Android,
                 tone = DashboardTone.NEUTRAL,
                 status = when {
@@ -101,13 +101,22 @@ internal fun AndroidAutoInstallerCard() {
                     modifier = Modifier.weight(1f),
                     enabled = activity != null && state.packageName != null &&
                         !state.busy && !state.pending,
-                    onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
+                    onClick = { activity?.let(AndroidAutoPackageInstaller::installDirectFromHome) }
                 ) {
                     Icon(Icons.Rounded.InstallMobile, contentDescription = null,
                         modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(5.dp))
                     Text("Install", maxLines = 1)
                 }
+            }
+            TextButton(
+                enabled = activity != null && state.packageName != null &&
+                    !state.busy && !state.pending,
+                onClick = { activity?.let(AndroidAutoPackageInstaller::install) },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("Native install · Android confirmation",
+                    style = MaterialTheme.typography.labelMedium)
             }
             val hasDetails = state.packageName != null || state.installMethod != null ||
                 state.initiatingPackage != null || state.installingPackage != null ||
@@ -163,7 +172,11 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
             if (state.version.isNotBlank()) InstallerDetailRow("Version", "v" + state.version)
             state.installMethod?.let {
                 InstallerDetailRow("Method",
-                    if (it == "SHELL") "Shizuku · shell" else "System installer")
+                    when (it) {
+                        "DIRECT_ADB" -> "ADB shell · direct"
+                        "SHELL" -> "Shizuku · system installer"
+                        else -> "System installer"
+                    })
             }
             if (state.initiatingPackage != null || state.installingPackage != null) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -192,7 +205,9 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                         modifier = Modifier.size(17.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        "Google Play attribution does not guarantee this app will appear in Android Auto.",
+                        if (state.installMethod == "DIRECT_ADB")
+                            "Direct ADB installs do not claim Google Play attribution."
+                        else "Google Play attribution does not guarantee this app will appear in Android Auto.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
