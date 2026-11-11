@@ -148,7 +148,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                appLog.append("APK installer: ADB install failed (${failure.javaClass.simpleName})")
+                appLog.append("APK installer: ADB install failed (${failure.javaClass.simpleName}): " +
+                    (failure.message ?: "unknown").take(220))
                 resetReady("ADB installation failed: ${failure.message ?: "unknown error"}. Try Native install.", error = true)
             }
         }
@@ -191,7 +192,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         } else ""
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT,
             message = text, sourceDetails = sourceDetails)
-        appLog.append("APK installer: $text; " + sourceDetails.replace("\\n", " ").take(250))
+        appLog.append("APK installer: $text; " + sourceDetails.replace('\n', ' ').take(250))
         pendingCleanup = true
         // The installer has returned; no further content reads are expected.
         app.revokeUriPermission(stagedUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION)
