@@ -6,6 +6,8 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Process
+import rikka.shizuku.Shizuku
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -109,6 +111,43 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             @Suppress("DEPRECATION")
             info.versionCode.toLong()
         }
+
+    /** Primary Install button: perform a real ADB-shell package installation,
+     * without opening the system installer. No automatic privileged fallback.
+     */
+    fun installWithAdb() {
+        if (state.value.phase != ApkInstallUiState.Phase.READY) return
+        val ready = NativeShizukuManager.state.value.serviceReady && runCatching {
+            Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID
+        }.getOrDefault(false)
+        if (!ready) {
+            resetReady("ADB is not connected. Connect LocalADB or choose Native install.")
+            appLog.append("APK installer: ADB shell not ready")
+            return
+        }
+        installing()
+        viewModelScope.launch {
+            try {
+                appLog.append("APK installer: streaming APK to ADB package manager")
+                val result = withContext(Dispatchers.IO) {
+                    AndroidAutoPackageInstaller.installDirect(
+                        app, ApkInstallProvider.file(app, session))
+                }
+                check(result == "Success") { "Package manager: $result" }
+                if (installed()) {
+                    complete(resultSuccess = true, cancelled = false)
+                } else {
+                    resetReady("ADB returned success, but the installed package could not be verified.")
+                    appLog.append("APK installer: ADB result unverified")
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.append("APK installer: ADB install failed (${failure.javaClass.simpleName})")
+                resetReady("ADB installation failed: ${failure.message ?: "unknown error"}. Try Native install.")
+            }
+        }
+    }
 
     fun stagedUri() = ApkInstallProvider.uri(app, session)
 
