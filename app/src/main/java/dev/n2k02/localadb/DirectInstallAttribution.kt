@@ -77,6 +77,7 @@ internal object DirectInstallAttribution {
 
     fun verdict(requested: String?, source: Source): String = when {
         !source.available -> "Installer source could not be verified."
+        requested == null && source.installing == null -> "Android did not report an installer of record."
         requested == null -> "Installer source recorded by Android."
         source.installing == requested -> "Google Play recorded as installer of record (not Play initiation)."
         else -> "Requested Google Play installer was not recorded by Android."
