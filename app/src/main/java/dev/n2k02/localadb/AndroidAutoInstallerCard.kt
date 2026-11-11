@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.*
@@ -132,17 +133,40 @@ internal fun AndroidAutoInstallerCard() {
                     }
                 )
             }
-            FilledTonalButton(
-                modifier = Modifier.fillMaxWidth(),
-                enabled = activity != null && state.packageName != null &&
-                    !state.busy && !state.pending,
-                shape = MaterialTheme.shapes.extraLarge,
-                onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
-            ) {
-                Icon(Icons.Rounded.PhoneAndroid, contentDescription = null,
-                    modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Native install · Android confirmation", maxLines = 1)
+            if (state.packageName != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(0.85f),
+                        enabled = !state.busy && !state.pending,
+                        onClick = {
+                            AndroidAutoPackageInstaller.cancelSelection(context)
+                            showDetails = false
+                        }
+                    ) {
+                        Icon(Icons.Rounded.Close, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Cancel", maxLines = 1)
+                    }
+                    FilledTonalButton(
+                        modifier = Modifier.weight(1.15f),
+                        enabled = activity != null && !state.busy && !state.pending,
+                        shape = MaterialTheme.shapes.extraLarge,
+                        onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
+                    ) {
+                        Icon(Icons.Rounded.PhoneAndroid, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Native install", maxLines = 1)
+                    }
+                }
+                Text("Native install opens Android confirmation.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             val hasDetails = state.packageName != null || state.installMethod != null ||
                 state.initiatingPackage != null || state.installingPackage != null ||
