@@ -21,7 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.InstallMobile
 import androidx.compose.material.icons.rounded.Verified
-import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -147,18 +147,23 @@ class ApkInstallActivity : ComponentActivity() {
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Text(
-                                        "Version ${state.version.ifBlank { "Unknown" }}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        "${state.size / 1024} KB",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                Text(
+                                    "Version",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    state.version.ifBlank { "Unknown" },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    softWrap = true
+                                )
+                                Text(
+                                    "APK size: ${"%.1f".format(state.size / (1024.0 * 1024.0))} MB",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
@@ -175,13 +180,38 @@ class ApkInstallActivity : ComponentActivity() {
                         )
                     }
                     if (state.message.isNotBlank()) {
-                        Text(
-                            state.message,
-                            color = if (state.phase == ApkInstallUiState.Phase.ERROR)
-                                MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        if (state.isError || state.phase == ApkInstallUiState.Phase.ERROR) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.large,
+                                color = MaterialTheme.colorScheme.errorContainer
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.Top,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.ErrorOutline,
+                                        contentDescription = "Installation error",
+                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Text(
+                                        state.message,
+                                        modifier = Modifier.weight(1f),
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(
+                                state.message,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
                 }
             },
@@ -273,6 +303,6 @@ class ApkInstallActivity : ComponentActivity() {
     private fun reportFailure(message: String) {
         Log.w("LocalAdbApkInstall", message)
         appLog.append("APK installer: ${message.take(180)}")
-        model.resetReady(message)
+        model.resetReady(message, error = true)
     }
 }
