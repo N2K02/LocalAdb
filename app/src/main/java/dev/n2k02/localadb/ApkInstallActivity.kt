@@ -15,13 +15,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Android
+import androidx.compose.material.icons.rounded.InstallMobile
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +39,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -81,70 +91,157 @@ class ApkInstallActivity : ComponentActivity() {
     private fun InstallerDialog(state: ApkInstallUiState) {
         val working = state.phase == ApkInstallUiState.Phase.STAGING ||
             state.phase == ApkInstallUiState.Phase.INSTALLING
+        val ready = state.phase == ApkInstallUiState.Phase.READY
         AlertDialog(
             onDismissRequest = {
                 if (!working) { model.abandon(); finish() }
             },
-            icon = { Icon(Icons.Rounded.Android, contentDescription = null) },
+            icon = {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.extraLarge
+                ) {
+                    Icon(
+                        Icons.Rounded.InstallMobile,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(16.dp).size(32.dp)
+                    )
+                }
+            },
             title = {
-                Text(when (state.phase) {
-                    ApkInstallUiState.Phase.STAGING -> "Reading APK"
-                    ApkInstallUiState.Phase.READY -> "Install ${state.name}?"
-                    ApkInstallUiState.Phase.PERMISSION -> "Allow APK installation"
-                    ApkInstallUiState.Phase.INSTALLING -> "Opening installer"
-                    ApkInstallUiState.Phase.VERIFYING -> "Verify installation"
-                    ApkInstallUiState.Phase.RESULT -> "Installation result"
-                    ApkInstallUiState.Phase.ERROR -> "Unable to open APK"
-                })
+                Text(
+                    when (state.phase) {
+                        ApkInstallUiState.Phase.STAGING -> "Preparing APK"
+                        ApkInstallUiState.Phase.READY -> "Ready to install"
+                        ApkInstallUiState.Phase.PERMISSION -> "Allow installation"
+                        ApkInstallUiState.Phase.INSTALLING -> "Opening Android installer"
+                        ApkInstallUiState.Phase.VERIFYING -> "Check installation"
+                        ApkInstallUiState.Phase.RESULT -> "Installation result"
+                        ApkInstallUiState.Phase.ERROR -> "Couldn't open APK"
+                    },
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (working) CircularProgressIndicator()
-                    if (state.packageName.isNotBlank()) {
-                        Text(state.packageName, style = MaterialTheme.typography.bodyMedium)
-                        Text("Version: ${state.version.ifBlank { "Unknown" }}",
-                            style = MaterialTheme.typography.bodyMedium)
-                        Text("Size: ${state.size / 1024} KB",
-                            style = MaterialTheme.typography.bodySmall)
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    if (working) {
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp),
+                                strokeWidth = 3.dp)
+                            Text("Please keep LocalADB open",
+                                style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
-                    if (state.message.isNotBlank()) {
-                        Text(state.message, style = MaterialTheme.typography.bodyMedium)
+                    if (state.packageName.isNotBlank()) {
+                        ElevatedCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    state.name.ifBlank { state.packageName },
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    state.packageName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text(
+                                        "Version ${state.version.ifBlank { "Unknown" }}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        "${state.size / 1024} KB",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (ready) {
+                        Text(
+                            "Android will ask you to confirm before installing this app.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                     if (state.phase == ApkInstallUiState.Phase.PERMISSION) {
-                        Text("Android requires permission to install apps from this source.")
+                        Text(
+                            "Allow LocalADB to install apps from this source in Android settings.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    if (state.message.isNotBlank()) {
+                        Text(
+                            state.message,
+                            color = if (state.phase == ApkInstallUiState.Phase.ERROR)
+                                MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
             },
             confirmButton = {
                 when (state.phase) {
                     ApkInstallUiState.Phase.READY ->
-                        TextButton(onClick = ::openStandardInstaller) { Text("Install") }
+                        Button(
+                            onClick = ::openStandardInstaller,
+                            shape = MaterialTheme.shapes.extraLarge
+                        ) {
+                            Icon(Icons.Rounded.InstallMobile, contentDescription = null,
+                                modifier = Modifier.size(18.dp))
+                            Text("Install", modifier = Modifier.padding(start = 8.dp))
+                        }
                     ApkInstallUiState.Phase.PERMISSION ->
-                        TextButton(onClick = ::requestUnknownSources) { Text("Settings") }
+                        Button(onClick = ::requestUnknownSources,
+                            shape = MaterialTheme.shapes.extraLarge) { Text("Open settings") }
                     ApkInstallUiState.Phase.VERIFYING ->
-                        TextButton(onClick = ::verifyAdbInstall) { Text("Verify") }
+                        Button(onClick = ::verifyAdbInstall,
+                            shape = MaterialTheme.shapes.extraLarge) { Text("Verify") }
                     ApkInstallUiState.Phase.RESULT, ApkInstallUiState.Phase.ERROR ->
-                        TextButton(onClick = { model.abandon(); finish() }) { Text("Close") }
+                        Button(onClick = { model.abandon(); finish() },
+                            shape = MaterialTheme.shapes.extraLarge) { Text("Close") }
                     else -> {}
                 }
             },
             dismissButton = {
                 when (state.phase) {
-                    ApkInstallUiState.Phase.READY -> Row {
-                        TextButton(onClick = { model.abandon(); finish() }) { Text("Cancel") }
-                        TextButton(onClick = ::openAdbInstaller) { Text("ADB-assisted") }
-                    }
-                    ApkInstallUiState.Phase.PERMISSION ->
-                        TextButton(onClick = { model.resetReady("Use ADB-assisted installation or grant permission") }) {
-                            Text("Back")
+                    ApkInstallUiState.Phase.READY ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(onClick = { model.abandon(); finish() }) {
+                                Text("Cancel")
+                            }
+                            FilledTonalButton(
+                                onClick = ::openAdbInstaller,
+                                shape = MaterialTheme.shapes.extraLarge
+                            ) { Text("ADB-assisted") }
                         }
+                    ApkInstallUiState.Phase.PERMISSION ->
+                        TextButton(onClick = {
+                            model.resetReady("You can use ADB-assisted installation instead.")
+                        }) { Text("Back") }
                     ApkInstallUiState.Phase.VERIFYING ->
                         TextButton(onClick = { model.abandon(); finish() }) { Text("Close") }
                     else -> {}
                 }
             },
             shape = MaterialTheme.shapes.extraLarge,
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     }
 
