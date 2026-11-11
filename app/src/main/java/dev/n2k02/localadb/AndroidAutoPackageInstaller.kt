@@ -36,6 +36,8 @@ import java.io.FileOutputStream
  * A successful metadata read-back does NOT guarantee Android Auto compatibility.
  */
 internal object AndroidAutoPackageInstaller {
+    enum class ResultStatus { IDLE, INSTALLING, INSTALLED, FAILED, NOT_VERIFIED, CANCELLED }
+
     data class State(
         val packageName: String? = null,
         val version: String = "",
@@ -43,6 +45,7 @@ internal object AndroidAutoPackageInstaller {
         val busy: Boolean = false,
         val pending: Boolean = false,
         val success: Boolean = false,
+        val resultStatus: ResultStatus = ResultStatus.IDLE,
         val message: String = "Select a compatible Android Auto APK to install.",
         // Structured read-back is independent of the free-form error message.
         val initiatingPackage: String? = null,
@@ -114,7 +117,7 @@ internal object AndroidAutoPackageInstaller {
                 archive = parsed
                 state.value = State(packageName = parsed.packageName,
                     version = parsed.versionName.orEmpty(), sizeBytes = length,
-                    message = "Ready. Confirm installation to continue.",
+                    message = "APK selected. Choose an installation method.",
                     details = "")
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -179,6 +182,7 @@ internal object AndroidAutoPackageInstaller {
                 Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID
             }.getOrDefault(false))) {
             state.value = state.value.copy(
+                resultStatus = ResultStatus.FAILED,
                 message = "Direct install requires the embedded Shizuku shell (UID 2000). " +
                     "Start Shizuku or select Native install.",
                 details = "Direct shell service unavailable")
@@ -191,6 +195,7 @@ internal object AndroidAutoPackageInstaller {
             try {
                 state.value = state.value.copy(
                     busy = true, pending = false, success = false,
+                    resultStatus = ResultStatus.INSTALLING,
                     installMethod = "DIRECT_ADB",
                     initiatingPackage = null, installingPackage = null,
                     requestedInstaller = null, attributionStatus = "",
@@ -212,6 +217,7 @@ internal object AndroidAutoPackageInstaller {
                 val verdict = DirectInstallAttribution.verdict(requestedInstaller, source)
                 state.value = state.value.copy(
                     busy = false, pending = false, success = changed,
+                    resultStatus = if (changed) ResultStatus.INSTALLED else ResultStatus.NOT_VERIFIED,
                     requestedInstaller = requestedInstaller,
                     initiatingPackage = source.initiating,
                     installingPackage = source.installing,
@@ -230,6 +236,7 @@ internal object AndroidAutoPackageInstaller {
                     (failure.message ?: "unknown").take(220))
                 state.value = state.value.copy(
                     busy = false, pending = false, success = false,
+                    resultStatus = ResultStatus.FAILED,
                     message = "Direct installation failed: " +
                         (failure.message ?: failure.javaClass.simpleName).take(250),
                     details = "Native install remains available.")
@@ -254,6 +261,7 @@ internal object AndroidAutoPackageInstaller {
             val packageName = staged.packageName
             try {
                 state.value = state.value.copy(busy = true, success = false,
+                    resultStatus = ResultStatus.INSTALLING,
                     initiatingPackage = null, installingPackage = null,
                     requestedInstaller = null, attributionStatus = "",
                     message = "Checking APK and installed version…")
@@ -274,6 +282,7 @@ internal object AndroidAutoPackageInstaller {
                 if ((path == AndroidAutoInstallPolicy.Path.APP || Build.VERSION.SDK_INT <= 34) &&
                     !activity.packageManager.canRequestPackageInstalls()) {
                     state.value = state.value.copy(busy = false, pending = false,
+                        resultStatus = ResultStatus.IDLE,
                         message = "Allow LocalAdb to install unknown apps, then tap Install again.")
                     activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                         Uri.parse("package:" + activity.packageName)))
@@ -334,6 +343,7 @@ internal object AndroidAutoPackageInstaller {
                 throw cancelled
             } catch (failure: Exception) {
                 state.value = state.value.copy(busy = false, pending = false,
+                    resultStatus = ResultStatus.FAILED,
                     message = "Installation could not start: " +
                         (failure.message ?: failure.javaClass.simpleName))
             }
@@ -446,6 +456,7 @@ internal object AndroidAutoPackageInstaller {
         val now = packageInfo(activity, name)
         if (now == null || now.lastUpdateTime <= previousUpdate) {
             state.value = state.value.copy(pending = false, busy = false,
+                resultStatus = ResultStatus.CANCELLED,
                 message = "Installation was cancelled or rejected. No new installation was detected.")
             return
         }
@@ -463,6 +474,7 @@ internal object AndroidAutoPackageInstaller {
             }
         } catch (failure: Exception) {
             state.value = state.value.copy(pending = false, busy = false,
+                resultStatus = ResultStatus.NOT_VERIFIED,
                 message = "Installed, but install-source verification failed: " + failure.message)
             return
         }
@@ -473,6 +485,7 @@ internal object AndroidAutoPackageInstaller {
                 .edit().putBoolean("shell_works",
                     lastPath == AndroidAutoInstallPolicy.Path.SHELL).apply()
             state.value = state.value.copy(pending = false, success = true,
+                resultStatus = ResultStatus.INSTALLED,
                 initiatingPackage = initiator, installingPackage = installing,
                 message = "Installed with accepted Google Play attribution.",
                 details = "")
@@ -495,6 +508,7 @@ internal object AndroidAutoPackageInstaller {
             }
         }
         state.value = state.value.copy(pending = false, busy = false,
+            resultStatus = ResultStatus.NOT_VERIFIED,
             initiatingPackage = initiator, installingPackage = installing,
             message = "APK installed, but Google Play attribution was not accepted.",
             details = "")
