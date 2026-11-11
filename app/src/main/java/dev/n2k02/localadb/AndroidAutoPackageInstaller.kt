@@ -246,8 +246,8 @@ internal object AndroidAutoPackageInstaller {
             "Selected APK is missing or too large"
         }
         val args = Shizuku.UserServiceArgs(ComponentName(context, LocalHelperService::class.java))
-            .tag("localhelper-direct-apk-installer")
-            .version(2)
+            .tag("localhelper-direct-apk-installer-v3")
+            .version(3)
             .processNameSuffix("direct_apk_installer")
             .daemon(false)
         val attached = CompletableDeferred<IBinder>()
@@ -263,6 +263,7 @@ internal object AndroidAutoPackageInstaller {
         Shizuku.bindUserService(args, conn)
         try {
             val binder = withTimeout(15_000) { attached.await() }
+            check(binder.pingBinder()) { "ADB helper disconnected before installation" }
             val request = Parcel.obtain()
             val response = Parcel.obtain()
             try {
@@ -271,7 +272,7 @@ internal object AndroidAutoPackageInstaller {
                     request.writeLong(file.length())
                     fd.writeToParcel(request, 0)
                     check(binder.transact(LocalHelperService.INSTALL_APK_DIRECT, request, response, 0)) {
-                        "ADB helper refused APK installation"
+                        "ADB helper does not support direct installation. Reconnect LocalADB and retry."
                     }
                     response.readException()
                     return response.readString().orEmpty()
