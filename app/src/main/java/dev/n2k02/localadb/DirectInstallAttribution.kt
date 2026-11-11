@@ -53,6 +53,15 @@ internal object DirectInstallAttribution {
         return PLAY_PACKAGE
     }
 
+    /** Fixed shell arguments; never interpolate installer names into a command string. */
+    fun sessionCreateArgs(installer: String?): List<String> {
+        require(installer == null || installer == PLAY_PACKAGE) {
+            "Unsupported installer-of-record package"
+        }
+        return listOf("install-create", "-r", "-t") +
+            if (installer == PLAY_PACKAGE) listOf("-i", PLAY_PACKAGE) else emptyList()
+    }
+
     fun readBack(context: Context, packageName: String): Source = try {
         if (Build.VERSION.SDK_INT >= 30) {
             val source = context.packageManager.getInstallSourceInfo(packageName)
