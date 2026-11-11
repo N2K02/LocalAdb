@@ -131,8 +131,9 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             try {
                 appLog.append("APK installer: streaming APK to ADB package manager")
                 val result = withContext(Dispatchers.IO) {
-                    AndroidAutoPackageInstaller.installDirect(
-                        app, ApkInstallProvider.file(app, session))
+                    val staged = ApkInstallProvider.file(app, session)
+                    AndroidAutoPackageInstaller.validateInstallCompatibility(app, staged)
+                    AndroidAutoPackageInstaller.installDirect(app, staged)
                 }
                 check(result == "Success") { "Package manager: $result" }
                 if (installed()) {
