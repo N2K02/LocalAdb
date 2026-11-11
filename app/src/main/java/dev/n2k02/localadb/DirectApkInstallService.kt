@@ -20,15 +20,24 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
 
     override fun getServiceUid(): Int = Process.myUid()
 
-    override fun installApk(apk: ParcelFileDescriptor?, length: Long): String {
+    override fun installApk(
+        apk: ParcelFileDescriptor?, length: Long, installerPackageName: String?
+    ): String {
         check(Process.myUid() == Process.SHELL_UID) { "Direct install requires ADB shell UID" }
         requireNotNull(apk) { "APK descriptor missing" }
         require(length in 1..ApkInstallPolicy.MAX_APK_BYTES) { "Invalid APK size" }
         check(Os.fstat(apk.fileDescriptor).st_size == length) { "APK size changed" }
 
+        // Never accept arbitrary package names or shell arguments from Binder callers.
+        val installer = installerPackageName.orEmpty()
+        require(installer.isEmpty() || installer == DirectInstallAttribution.PLAY_PACKAGE) {
+            "Unsupported installer-of-record package"
+        }
+        val createArgs = mutableListOf("install-create", "-r", "-t")
+        if (installer.isNotEmpty()) createArgs.addAll(listOf("-i", installer))
         var session: String? = null
         try {
-            val created = runCommand(listOf("install-create", "-r", "-t"))
+            val created = runCommand(createArgs)
             val id = Regex("""\[(\d+)\]""").find(created)?.groupValues?.get(1)
                 ?: error("Cannot determine package install session: ${created.take(200)}")
             session = id
