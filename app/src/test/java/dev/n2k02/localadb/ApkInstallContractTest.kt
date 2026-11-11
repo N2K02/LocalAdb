@@ -29,15 +29,22 @@ class ApkInstallContractTest {
         assertTrue(vm.contains("ApkInstallPolicy.MAX_APK_BYTES"))
     }
 
-    @Test fun adbAssistedPathCannotLaunchArbitraryUriOrComponent() {
+    @Test fun directInstallUsesVerifiedShellAndOnlyStreamsOneApk() {
         val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val model = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
         val helper = File("src/main/java/dev/n2k02/localadb/LocalHelperService.kt").readText()
-        assertTrue(activity.contains("Shizuku.getUid() == Process.SHELL_UID"))
-        assertTrue(activity.contains("startWithLocalHelper"))
+        val installer = File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
+        assertTrue(activity.contains("model::installWithAdb"))
+        assertTrue(activity.contains("Native install"))
+        assertTrue(model.contains("Shizuku.getUid() == Process.SHELL_UID"))
+        assertTrue(model.contains("AndroidAutoPackageInstaller.installDirect"))
         assertTrue(helper.contains("Process.myUid() == Process.SHELL_UID"))
-        assertTrue(helper.contains("ApkInstallProvider.validSession(genericId)"))
-        assertTrue(helper.contains("intent.action == Intent.ACTION_INSTALL_PACKAGE"))
-        assertTrue(helper.contains("Unsupported installer"))
+        assertTrue(helper.contains("INSTALL_APK_DIRECT"))
+        assertTrue(helper.contains("ParcelFileDescriptor.CREATOR.createFromParcel(data)"))
+        assertTrue(helper.contains("Os.fstat(apk.fileDescriptor)"))
+        assertTrue(helper.contains("\"-S\", bytes.toString(), \"-\""))
+        assertTrue(installer.contains("ParcelFileDescriptor.MODE_READ_ONLY"))
+        assertFalse(activity.contains("ADB-assisted"))
     }
 
     @Test fun composeDialogAndRealActivityResultAreUsed() {
@@ -47,7 +54,7 @@ class ApkInstallContractTest {
         assertTrue(code.contains("MaterialTheme.shapes.extraLarge"))
         assertTrue(code.contains("ActivityResultContracts.StartActivityForResult()"))
         assertTrue(code.contains("model.complete("))
-        assertTrue(code.contains("model.markAwaitingVerification()"))
+        assertTrue(code.contains("model::installWithAdb"))
         assertFalse(code.contains("android.app.AlertDialog"))
     }
 
@@ -56,7 +63,7 @@ class ApkInstallContractTest {
         assertTrue(code.contains("AndroidViewModel"))
         assertTrue(code.contains("if (started) return"))
         assertTrue(code.contains("Phase.INSTALLING"))
-        assertTrue(code.contains("Phase.VERIFYING"))
+        assertTrue(code.contains("Phase.RESULT"))
         assertTrue(code.contains("override fun onCleared()"))
     }
 
