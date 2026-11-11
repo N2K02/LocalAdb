@@ -514,6 +514,16 @@ internal object AndroidAutoPackageInstaller {
             details = "")
     }
 
+    /** Discard a selected APK without stopping the Shizuku service.
+     * Only the idle selection can be cleared; a running install must finish.
+     */
+    fun cancelSelection(context: Context) {
+        if (state.value.busy || state.value.pending) return
+        if (archive == null && state.value.packageName == null) return
+        shutdown(context)
+        state.value = State(message = "Selection cancelled. Choose an APK to continue.")
+    }
+
     fun shutdown(context: Context) {
         task?.cancel()
         task = null
