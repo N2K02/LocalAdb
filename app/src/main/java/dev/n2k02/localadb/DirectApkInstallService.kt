@@ -29,12 +29,9 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
         check(Os.fstat(apk.fileDescriptor).st_size == length) { "APK size changed" }
 
         // Never accept arbitrary package names or shell arguments from Binder callers.
-        val installer = installerPackageName.orEmpty()
-        require(installer.isEmpty() || installer == DirectInstallAttribution.PLAY_PACKAGE) {
-            "Unsupported installer-of-record package"
-        }
-        val createArgs = mutableListOf("install-create", "-r", "-t")
-        if (installer.isNotEmpty()) createArgs.addAll(listOf("-i", installer))
+        val createArgs = DirectInstallAttribution.sessionCreateArgs(
+            installerPackageName?.ifBlank { null }
+        )
         var session: String? = null
         try {
             val created = runCommand(createArgs)
