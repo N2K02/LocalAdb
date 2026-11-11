@@ -26,6 +26,7 @@ internal data class ApkInstallUiState(
     val version: String = "",
     val size: Long = 0,
     val message: String = "",
+    val isError: Boolean = false,
     val phase: Phase = Phase.STAGING,
 ) {
     enum class Phase { STAGING, READY, PERMISSION, INSTALLING, RESULT, ERROR }
@@ -121,7 +122,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID
         }.getOrDefault(false)
         if (!ready) {
-            resetReady("ADB is not connected. Connect LocalADB or choose Native install.")
+            resetReady("ADB is not connected. Connect LocalADB or choose Native install.", error = true)
             appLog.append("APK installer: ADB shell not ready")
             return
         }
@@ -137,14 +138,14 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
                 if (installed()) {
                     complete(resultSuccess = true, cancelled = false)
                 } else {
-                    resetReady("ADB returned success, but the installed package could not be verified.")
+                    resetReady("ADB returned success, but the installed package could not be verified.", error = true)
                     appLog.append("APK installer: ADB result unverified")
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
                 appLog.append("APK installer: ADB install failed (${failure.javaClass.simpleName})")
-                resetReady("ADB installation failed: ${failure.message ?: "unknown error"}. Try Native install.")
+                resetReady("ADB installation failed: ${failure.message ?: "unknown error"}. Try Native install.", error = true)
             }
         }
     }
@@ -154,7 +155,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
     fun installing() {
         if (state.value.phase != ApkInstallUiState.Phase.READY &&
             state.value.phase != ApkInstallUiState.Phase.PERMISSION) return
-        state.value = state.value.copy(phase = ApkInstallUiState.Phase.INSTALLING)
+        state.value = state.value.copy(phase = ApkInstallUiState.Phase.INSTALLING,
+            message = "", isError = false)
     }
 
     fun permissionRequired() {
@@ -162,8 +164,9 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         appLog.append("APK installer: install-source permission required")
     }
 
-    fun resetReady(message: String) {
-        state.value = state.value.copy(phase = ApkInstallUiState.Phase.READY, message = message)
+    fun resetReady(message: String, error: Boolean = false) {
+        state.value = state.value.copy(phase = ApkInstallUiState.Phase.READY, message = message,
+            isError = error)
     }
 
     fun installed(): Boolean {
