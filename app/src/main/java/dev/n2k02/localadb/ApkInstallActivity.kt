@@ -128,18 +128,7 @@ class ApkInstallActivity : ComponentActivity() {
                         )
                     }
                     Text(
-                        if (state.sourceDetails.isNotBlank()) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large,
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest
-                        ) {
-                            Text(state.sourceDetails, modifier = Modifier.padding(12.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    when (state.phase) {
+                        when (state.phase) {
                             ApkInstallUiState.Phase.STAGING -> "Preparing APK"
                             ApkInstallUiState.Phase.READY -> "Ready to install"
                             ApkInstallUiState.Phase.PERMISSION -> "Allow installation"
