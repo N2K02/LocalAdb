@@ -241,68 +241,41 @@ internal object AndroidAutoPackageInstaller {
     /** Installs one private, validated APK over a read-only descriptor using
      * the existing Shizuku UID 2000 helper. Keeps the work off the UI thread.
      */
+    /** AIDL UserService installer based on the upstream Shizuku demo.
+     * The service uses Android package install sessions under shell UID.
+     */
     internal suspend fun installDirect(context: Context, file: java.io.File): String {
         check(file.isFile && file.length() in 1..ApkInstallPolicy.MAX_APK_BYTES) {
             "Selected APK is missing or too large"
         }
+        check(Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID) {
+            "ADB shell authorization unavailable"
+        }
         val args = Shizuku.UserServiceArgs(ComponentName(context, DirectApkInstallService::class.java))
-            .tag("direct-apk-install-service-v2")
-            .version(2)
-            .processNameSuffix("apk_installer_v2")
+            .tag("direct-apk-aidl-v1")
+            .version(3)
+            .processNameSuffix("apk_aidl_v1")
             .daemon(false)
         val attached = CompletableDeferred<IBinder>()
         val conn = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
                 if (service != null && service.pingBinder()) attached.complete(service)
-                else attached.completeExceptionally(IllegalStateException("ADB helper unavailable"))
+                else attached.completeExceptionally(IllegalStateException("Direct installer service unavailable"))
             }
             override fun onServiceDisconnected(name: ComponentName?) {
-                attached.completeExceptionally(IllegalStateException("ADB helper disconnected"))
+                attached.completeExceptionally(IllegalStateException("Direct installer disconnected"))
             }
         }
         Shizuku.bindUserService(args, conn)
         try {
             val binder = withTimeout(15_000) { attached.await() }
-            check(binder.pingBinder()) { "ADB helper disconnected before installation" }
-            // Confirm that this is the new direct-install service, not a stale
-            // Android Auto helper or a Shizuku Binder proxy with another protocol.
-            val challenge = java.util.UUID.randomUUID().toString()
-            val pingRequest = Parcel.obtain()
-            val pingResponse = Parcel.obtain()
-            try {
-                pingRequest.writeInterfaceToken(DirectApkInstallService.DESCRIPTOR)
-                pingRequest.writeString(DirectApkInstallService.OP_PING)
-                pingRequest.writeString(challenge)
-                check(binder.transact(DirectApkInstallService.COMMAND, pingRequest, pingResponse, 0)) {
-                    "Direct-install service did not accept protocol handshake"
-                }
-                pingResponse.readException()
-                check(pingResponse.readInt() == Process.SHELL_UID &&
-                    pingResponse.readString() == challenge &&
-                    pingResponse.readInt() == DirectApkInstallService.PROTOCOL) {
-                    "Direct-install service identity or protocol mismatch"
-                }
-            } finally {
-                pingResponse.recycle()
-                pingRequest.recycle()
+            val installer = IDirectApkInstallService.Stub.asInterface(binder)
+                ?: error("Direct installer AIDL service unavailable")
+            check(installer.serviceUid == Process.SHELL_UID) {
+                "Direct installer is not running as shell"
             }
-            val request = Parcel.obtain()
-            val response = Parcel.obtain()
-            try {
-                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-                    request.writeInterfaceToken(DirectApkInstallService.DESCRIPTOR)
-                    request.writeString(DirectApkInstallService.OP_INSTALL)
-                    request.writeLong(file.length())
-                    fd.writeToParcel(request, 0)
-                    check(binder.transact(DirectApkInstallService.COMMAND, request, response, 0)) {
-                        "Direct-install service did not accept the install operation."
-                    }
-                    response.readException()
-                    return response.readString().orEmpty()
-                }
-            } finally {
-                response.recycle()
-                request.recycle()
+            return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                installer.installApk(fd, file.length())
             }
         } finally {
             withContext(NonCancellable) {
