@@ -35,7 +35,7 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
 
             val process = ProcessBuilder(
                 "/system/bin/pm", "install-write", "-S", length.toString(),
-                session, "base.apk", "-"
+                id, "base.apk", "-"
             ).redirectErrorStream(true).start()
             try {
                 var written = 0L
@@ -59,14 +59,14 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
                 if (process.isAlive) process.destroyForcibly()
             }
             Log.i(TAG, "APK transfer completed")
-            val outcome = runCommand(listOf("install-commit", session))
+            val outcome = runCommand(listOf("install-commit", id))
             Log.i(TAG, "Install session committed")
             session = null
             return if (outcome.contains("Success", ignoreCase = true)) "Success"
                 else error("Package manager: ${outcome.take(300)}")
         } finally {
-            if (session != null) {
-                runCatching { runCommand(listOf("install-abandon", session)) }
+            session?.let { id ->
+                runCatching { runCommand(listOf("install-abandon", id)) }
                 Log.w(TAG, "Install session abandoned after failure")
             }
             apk.close()
