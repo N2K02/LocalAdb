@@ -31,9 +31,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +90,9 @@ class ApkInstallActivity : ComponentActivity() {
         val working = state.phase == ApkInstallUiState.Phase.STAGING ||
             state.phase == ApkInstallUiState.Phase.INSTALLING
         val ready = state.phase == ApkInstallUiState.Phase.READY
+        var playRecord by rememberSaveable {
+            mutableStateOf(DirectInstallAttribution.enabled(this@ApkInstallActivity))
+        }
         val close = { model.abandon(); finish() }
         Dialog(
             onDismissRequest = { if (!working) close() },
@@ -121,7 +128,18 @@ class ApkInstallActivity : ComponentActivity() {
                         )
                     }
                     Text(
-                        when (state.phase) {
+                        if (state.sourceDetails.isNotBlank()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.large,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Text(state.sourceDetails, modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    when (state.phase) {
                             ApkInstallUiState.Phase.STAGING -> "Preparing APK"
                             ApkInstallUiState.Phase.READY -> "Ready to install"
                             ApkInstallUiState.Phase.PERMISSION -> "Allow installation"
@@ -174,6 +192,25 @@ class ApkInstallActivity : ComponentActivity() {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall
                         )
+                    }
+                    if (ready) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Google Play as installer of record",
+                                    style = MaterialTheme.typography.labelMedium)
+                                Text("Optional · not genuine Play initiation",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(checked = playRecord, onCheckedChange = {
+                                playRecord = it
+                                DirectInstallAttribution.setEnabled(this@ApkInstallActivity, it)
+                            })
+                        }
                     }
                     if (state.phase == ApkInstallUiState.Phase.PERMISSION) {
                         Text("Allow LocalADB to install apps from this source in Android settings.",
