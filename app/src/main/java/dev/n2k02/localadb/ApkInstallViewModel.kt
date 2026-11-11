@@ -27,6 +27,7 @@ internal data class ApkInstallUiState(
     val size: Long = 0,
     val message: String = "",
     val isError: Boolean = false,
+    val sourceDetails: String = "",
     val phase: Phase = Phase.STAGING,
 ) {
     enum class Phase { STAGING, READY, PERMISSION, INSTALLING, RESULT, ERROR }
@@ -130,6 +131,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         viewModelScope.launch {
             try {
                 appLog.append("APK installer: streaming APK to ADB package manager")
+                val requestedInstaller = DirectInstallAttribution.requestedInstaller(app)
                 val result = withContext(Dispatchers.IO) {
                     val staged = ApkInstallProvider.file(app, session)
                     AndroidAutoPackageInstaller.validateInstallCompatibility(app, staged)
@@ -137,7 +139,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
                 }
                 check(result == "Success") { "Package manager: $result" }
                 if (installed()) {
-                    complete(resultSuccess = true, cancelled = false)
+                    complete(resultSuccess = true, cancelled = false,
+                        requestedInstaller = requestedInstaller)
                 } else {
                     resetReady("ADB returned success, but the installed package could not be verified.", error = true)
                     appLog.append("APK installer: ADB result unverified")
@@ -167,7 +170,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
 
     fun resetReady(message: String, error: Boolean = false) {
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.READY, message = message,
-            isError = error)
+            isError = error, sourceDetails = "")
     }
 
     fun installed(): Boolean {
@@ -179,10 +182,16 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             versionCode(current), current.lastUpdateTime)
     }
 
-    fun complete(resultSuccess: Boolean, cancelled: Boolean) {
-        val text = ApkInstallPolicy.result(resultSuccess, installed(), cancelled)
-        state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT, message = text)
-        appLog.append("APK installer: $text")
+    fun complete(resultSuccess: Boolean, cancelled: Boolean, requestedInstaller: String? = null) {
+        val verified = installed()
+        val text = ApkInstallPolicy.result(resultSuccess, verified, cancelled)
+        val sourceDetails = if (resultSuccess && verified) {
+            DirectInstallAttribution.sourceDetails(requestedInstaller,
+                DirectInstallAttribution.readBack(app, state.value.packageName))
+        } else ""
+        state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT,
+            message = text, sourceDetails = sourceDetails)
+        appLog.append("APK installer: $text; " + sourceDetails.replace("\\n", " ").take(250))
         pendingCleanup = true
         // The installer has returned; no further content reads are expected.
         app.revokeUriPermission(stagedUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION)
