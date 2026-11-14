@@ -3,6 +3,8 @@ package dev.n2k02.localadb
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.Manifest
+import android.content.pm.PackageManager
 import android.app.Service
 import android.content.Intent
 import android.os.Build
@@ -48,6 +50,18 @@ class ApkInstallForegroundService : Service() {
         notifications.createNotificationChannel(
             NotificationChannel(CHANNEL, "APK installations", NotificationManager.IMPORTANCE_DEFAULT)
         )
+        appLog.append("APK notification: " + notificationAvailability())
+    }
+
+    /** Explain why an OS notification can be absent even if a foreground install runs. */
+    private fun notificationAvailability(): String {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return "permission denied"
+        if (!notifications.areNotificationsEnabled()) return "app notifications disabled"
+        val channel = notifications.getNotificationChannel(CHANNEL)
+        if (channel?.importance == NotificationManager.IMPORTANCE_NONE) return "APK channel blocked"
+        return "enabled"
     }
 
     private fun notification(title: String, message: String, ongoing: Boolean): Notification {
@@ -78,6 +92,7 @@ class ApkInstallForegroundService : Service() {
             return START_NOT_STICKY
         }
         // startForeground is called immediately, before any potentially blocking APK operations.
+        appLog.append("APK notification: foreground start; " + notificationAvailability())
         startForeground(ACTIVE_ID, notification("Installing $label", "Installing via ADB…", true))
         val priorVersion = if (intent.hasExtra(EXTRA_OLD_VERSION))
             intent.getLongExtra(EXTRA_OLD_VERSION, -1L) else null
@@ -128,6 +143,7 @@ class ApkInstallForegroundService : Service() {
                     .putExtra(EXTRA_SESSION, session)
                     .putExtra(EXTRA_SUCCESS, ok)
                     .putExtra(EXTRA_MESSAGE, completedMessage))
+                appLog.append("APK notification: completion; " + notificationAvailability())
                 runCatching { notifications.notify(
                     RESULT_ID, notification(
                         if (ok) "APK installed" else "APK installation failed",
