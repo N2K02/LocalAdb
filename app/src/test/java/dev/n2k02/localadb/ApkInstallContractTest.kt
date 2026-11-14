@@ -173,7 +173,8 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("state.phase == ApkInstallUiState.Phase.RESULT && showMore"))
         assertTrue(activity.contains("Successfully installed"))
         assertTrue(activity.contains("dismissOnClickOutside = false"))
-        assertTrue(activity.contains("dismissOnBackPress = false"))
+        assertTrue(activity.contains("dismissOnBackPress = true"))
+        assertTrue(activity.contains("if (showMore) showMore = false"))
         assertFalse(activity.contains("onDismissRequest = { if (!working"))
     }
 
