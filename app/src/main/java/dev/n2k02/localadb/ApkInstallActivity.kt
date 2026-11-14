@@ -24,13 +24,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.InstallMobile
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ElevatedCard
@@ -41,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
@@ -194,41 +196,43 @@ class ApkInstallActivity : ComponentActivity() {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.96f)
-                    .widthIn(max = 560.dp)
+                    .widthIn(max = 540.dp)
                     .wrapContentHeight(),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shape = MaterialTheme.shapes.extraLarge,
                 tonalElevation = 6.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 22.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)
+                        .heightIn(max = 680.dp).verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = MaterialTheme.shapes.extraLarge
-                    ) {
-                        Icon(
-                            Icons.Rounded.InstallMobile,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(12.dp).size(28.dp)
-                        )
+                    Row(modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Surface(color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = MaterialTheme.shapes.large) {
+                            Icon(Icons.Rounded.InstallMobile, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(10.dp).size(24.dp))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("LocalADB", style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold)
+                            Text(when (state.phase) {
+                                ApkInstallUiState.Phase.STAGING -> "Preparing APK"
+                                ApkInstallUiState.Phase.READY -> "Ready to install"
+                                ApkInstallUiState.Phase.PERMISSION -> "Allow installation"
+                                ApkInstallUiState.Phase.INSTALLING -> "Installing package"
+                                ApkInstallUiState.Phase.RESULT -> if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                    "Installation complete" else "Installation finished"
+                                ApkInstallUiState.Phase.ERROR -> "Unable to open APK"
+                            }, style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                    Text(
-                        when (state.phase) {
-                            ApkInstallUiState.Phase.STAGING -> "Preparing APK"
-                            ApkInstallUiState.Phase.READY -> "Ready to install"
-                            ApkInstallUiState.Phase.PERMISSION -> "Allow installation"
-                            ApkInstallUiState.Phase.INSTALLING -> "Installing APK"
-                            ApkInstallUiState.Phase.RESULT -> "Installation result"
-                            ApkInstallUiState.Phase.ERROR -> "Couldn't open APK"
-                        },
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
-                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     if (working) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -426,17 +430,15 @@ class ApkInstallActivity : ComponentActivity() {
         if (closing.value) return
         closing.value = true
         lifecycleScope.launch {
-            withContext(Dispatchers.IO) { model.abandon() }
-            if (isTaskRoot) finishAndRemoveTask() else finish()
+            try {
+                withContext(Dispatchers.IO) { model.abandon() }
+            } catch (failure: Exception) {
+                appLog.append("APK installer close: cleanup failed: ${failure.javaClass.simpleName}")
+            } finally {
+                if (isTaskRoot) finishAndRemoveTask() else finish()
+            }
         }
     }
-
-    private data class InstallerOutcomeBadge(
-        val label: String,
-        val icon: androidx.compose.ui.graphics.vector.ImageVector,
-        val background: androidx.compose.ui.graphics.Color,
-        val foreground: androidx.compose.ui.graphics.Color
-    )
 
     private fun requestUnknownSources() {
         try {
@@ -468,7 +470,7 @@ class ApkInstallActivity : ComponentActivity() {
             val intent = installerIntent()
             if (intent.resolveActivity(packageManager) == null)
                 error("No Android package installer is available")
-            model.installing()
+            model.installing(native = true)
             standardInstaller.launch(intent)
             appLog.append("APK installer: native confirmation launched")
         } catch (failure: Exception) {
