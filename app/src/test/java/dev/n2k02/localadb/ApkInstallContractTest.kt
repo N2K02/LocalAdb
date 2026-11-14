@@ -165,6 +165,18 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("state.message.isNotBlank()"))
     }
 
+    @Test fun showMoreExpandsInsideDialogWithoutClosingAndResultHasOwnLayout() {
+        val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        assertTrue(activity.contains("showMore = !showMore"))
+        assertTrue(activity.contains("Show more"))
+        assertTrue(activity.contains("Show less"))
+        assertTrue(activity.contains("state.phase == ApkInstallUiState.Phase.RESULT && showMore"))
+        assertTrue(activity.contains("Successfully installed"))
+        assertTrue(activity.contains("dismissOnClickOutside = false"))
+        assertTrue(activity.contains("dismissOnBackPress = false"))
+        assertFalse(activity.contains("onDismissRequest = { if (!working"))
+    }
+
     @Test fun modernTimelineShowsTimestampedRealProgress() {
         val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
         val model = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
