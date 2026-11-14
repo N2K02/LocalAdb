@@ -161,7 +161,7 @@ class ApkInstallContractTest {
         assertTrue(helper.contains("pm install-create: starting"))
         assertTrue(helper.contains("pm install-write: completed"))
         assertTrue(helper.contains("pm install-commit: completed"))
-        assertTrue(helper.contains("pm install-write: $percent% transferred"))
+        assertTrue(helper.contains("pm install-write: ${\x27$\x27}percent% transferred"))
         assertTrue(activity.contains("state.message.isNotBlank()"))
     }
 
