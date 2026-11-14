@@ -26,6 +26,10 @@ class ApkInstallContractTest {
         assertTrue(styles.contains("name=\"Theme.LocalAdb.ApkInstaller\""))
         assertTrue(styles.contains("<item name=\"android:windowIsTranslucent\">true</item>"))
         assertTrue(styles.contains("<item name=\"android:windowBackground\">@android:color/transparent</item>"))
+        assertTrue(styles.contains("<item name=\"android:backgroundDimEnabled\">false</item>"))
+        val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        assertTrue(activity.contains("window?.setDimAmount(0f)"))
+        assertTrue(activity.contains("window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)"))
         assertFalse(handler.contains("android.intent.category.LAUNCHER"))
     }
 
@@ -39,7 +43,8 @@ class ApkInstallContractTest {
         val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
         assertTrue(activity.contains("val close = { closeInstaller() }"))
         assertTrue(activity.contains("if (isTaskRoot) finishAndRemoveTask() else finish()"))
-        assertTrue(activity.contains("if (model.state.value.phase == ApkInstallUiState.Phase.INSTALLING) return"))
+        assertTrue(activity.contains("model.abandon()"))
+        assertFalse(activity.contains("if (model.state.value.phase == ApkInstallUiState.Phase.INSTALLING) return"))
         assertFalse(activity.contains("MainActivity::class.java"))
         assertFalse(activity.contains("getLaunchIntentForPackage"))
     }
