@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.IntentFilter
 import android.app.NotificationManager
 import android.Manifest
+import android.annotation.SuppressLint
 import android.os.Build
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -78,6 +79,8 @@ class ApkInstallActivity : ComponentActivity() {
         }
     }
 
+    // Android 12 and below use the legacy overload; Android 13+ specifies NOT_EXPORTED.
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onStart() {
         super.onStart()
         val filter = IntentFilter(ApkInstallForegroundService.ACTION_RESULT)
