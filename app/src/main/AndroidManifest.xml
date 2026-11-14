@@ -43,7 +43,9 @@
         <!-- Handle APKs explicitly opened or shared from another app. -->
         <activity android:name=".ApkInstallActivity"
             android:exported="true"
-            android:excludeFromRecents="true">
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:documentLaunchMode="always">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
