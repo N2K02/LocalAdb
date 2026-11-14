@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
+import android.app.NotificationManager
 import android.Manifest
 import android.os.Build
 import android.content.pm.PackageManager
@@ -86,6 +87,23 @@ class ApkInstallActivity : ComponentActivity() {
     override fun onStop() {
         unregisterReceiver(installResultReceiver)
         super.onStop()
+    }
+
+    private fun notificationProblem(): String? {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return "Android notification permission is off. Installation can continue, but alerts may be hidden."
+        val manager = getSystemService(NotificationManager::class.java)
+        if (!manager.areNotificationsEnabled()) return "LocalADB notifications are disabled in Android settings."
+        if (manager.getNotificationChannel("apk_install_status")?.importance ==
+            NotificationManager.IMPORTANCE_NONE
+        ) return "The APK installations notification channel is disabled."
+        return null
+    }
+
+    private fun openAppNotificationSettings() {
+        startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
     }
 
     private fun beginAdbInstall() {
@@ -245,6 +263,15 @@ class ApkInstallActivity : ComponentActivity() {
                                 playRecord = it
                                 DirectInstallAttribution.setEnabled(this@ApkInstallActivity, it)
                             })
+                        }
+                    }
+                    if (state.phase == ApkInstallUiState.Phase.INSTALLING) {
+                        notificationProblem()?.let { problem ->
+                            Text(problem, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = ::openAppNotificationSettings) {
+                                Text("Notification settings")
+                            }
                         }
                     }
                     if (state.phase == ApkInstallUiState.Phase.PERMISSION) {
