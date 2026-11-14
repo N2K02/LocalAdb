@@ -50,7 +50,7 @@ class ApkInstallContractTest {
         val helper = File("src/main/java/dev/n2k02/localadb/DirectApkInstallService.kt").readText()
         val caller = File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
         val aidl = File("src/main/aidl/dev/n2k02/localadb/IDirectApkInstallService.aidl").readText()
-        assertTrue(activity.contains("model::installWithAdb"))
+        assertTrue(activity.contains("::beginAdbInstall"))
         assertTrue(activity.contains("Native install"))
         assertTrue(model.contains("Shizuku.getUid() == Process.SHELL_UID"))
         assertTrue(caller.contains("IDirectApkInstallService.Stub.asInterface"))
@@ -77,9 +77,10 @@ class ApkInstallContractTest {
         assertTrue(existing.contains("fun validateInstallCompatibility("))
         assertTrue(existing.contains("compatibleSigner(parsed, old)"))
         assertTrue(existing.contains("check(newCode >= oldCode)"))
-        assertTrue(viewModel.contains("AndroidAutoPackageInstaller.validateInstallCompatibility(app, staged)"))
-        assertTrue(viewModel.indexOf("validateInstallCompatibility(app, staged)") <
-            viewModel.indexOf("AndroidAutoPackageInstaller.installDirect(app, staged)"))
+        assertTrue(File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText().contains("AndroidAutoPackageInstaller.validateInstallCompatibility(applicationContext, file)"))
+        val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
+        assertTrue(service.indexOf("validateInstallCompatibility(applicationContext, file)") <
+            service.indexOf("AndroidAutoPackageInstaller.installDirect(applicationContext, file)"))
     }
 
     @Test fun optionalPlayRecordModeIsSharedAndAlwaysReadBack() {
@@ -92,7 +93,7 @@ class ApkInstallContractTest {
         assertTrue(caller.contains("DirectInstallAttribution.requestedInstaller(context)"))
         assertTrue(caller.contains("DirectInstallAttribution.readBack(app, selected.packageName)"))
         assertTrue(caller.contains("attributionStatus = verdict"))
-        assertTrue(model.contains("DirectInstallAttribution.readBack(app, state.value.packageName)"))
+        assertTrue(File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText().contains("DirectInstallAttribution.readBack(applicationContext, pkg)"))
         assertTrue(ui.contains("Google Play as installer of record"))
         assertTrue(ui.contains("DirectInstallAttribution.setEnabled("))
         assertTrue(ui.contains("state.sourceDetails"))
@@ -110,7 +111,7 @@ class ApkInstallContractTest {
         assertTrue(code.contains("MaterialTheme.shapes.extraLarge"))
         assertTrue(code.contains("ActivityResultContracts.StartActivityForResult()"))
         assertTrue(code.contains("model.complete("))
-        assertTrue(code.contains("model::installWithAdb"))
+        assertTrue(code.contains("::beginAdbInstall"))
         assertTrue(code.contains("MaterialTheme.colorScheme.errorContainer"))
         assertTrue(code.contains("state.isError"))
         assertTrue(code.contains("APK size:"))
@@ -133,6 +134,27 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("\"Needs verification\""))
         assertTrue(activity.contains("state.message.isNotBlank()"))
         assertTrue(activity.contains("state.sourceDetails.isNotBlank()"))
+    }
+
+    @Test fun foregroundInstallNotificationsAndBackgroundDismissal() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
+        val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val vm = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(manifest.contains("android.permission.POST_NOTIFICATIONS"))
+        assertTrue(manifest.contains("android.permission.FOREGROUND_SERVICE_DATA_SYNC"))
+        assertTrue(manifest.contains("android:foregroundServiceType=\"dataSync\""))
+        assertTrue(service.contains("startForeground(ACTIVE_ID"))
+        assertTrue(service.contains("setProgress(if (ongoing) 0 else 0, 0, ongoing)"))
+        assertTrue(service.contains("APK installed"))
+        assertTrue(service.contains("APK installation failed"))
+        assertTrue(service.contains("ApkInstallPolicy.installedChanged"))
+        assertTrue(service.contains("stopForeground(STOP_FOREGROUND_REMOVE)"))
+        assertTrue(activity.contains("Close · continue in background"))
+        assertTrue(activity.contains("ActivityResultContracts.RequestPermission()"))
+        assertTrue(activity.contains("installResultReceiver"))
+        assertTrue(vm.contains("app.startForegroundService(request)"))
+        assertTrue(vm.contains("fun directInstallResult("))
     }
 
     @Test fun lifecycleStateRetainedUntilInstallerResult() {
