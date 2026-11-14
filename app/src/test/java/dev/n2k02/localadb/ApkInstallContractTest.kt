@@ -165,6 +165,16 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("state.message.isNotBlank()"))
     }
 
+    @Test fun notificationUsesTransparentMonochromeSmallIcon() {
+        val icon = File("src/main/res/drawable/ic_localadb_notification.xml").readText()
+        val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
+        assertTrue(icon.contains("android:viewportWidth=\"24\""))
+        assertTrue(icon.contains("android:fillColor=\"#FFFFFFFF\""))
+        assertFalse(icon.contains("M0,0h24v24"))
+        assertTrue(service.contains("setSmallIcon(R.drawable.ic_localadb_notification)"))
+        assertFalse(service.contains("setSmallIcon(R.drawable.ic_localadb)"))
+    }
+
     @Test fun blockedNotificationStateIsExplainedAndLogged() {
         val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
         val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
