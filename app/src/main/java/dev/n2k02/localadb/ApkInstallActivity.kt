@@ -33,6 +33,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.InstallMobile
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material3.Button
@@ -61,6 +63,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
@@ -183,13 +186,14 @@ class ApkInstallActivity : ComponentActivity() {
             mutableStateOf(DirectInstallAttribution.enabled(this@ApkInstallActivity))
         }
         val close = { closeInstaller() }
+        var showMore by rememberSaveable(state.phase.name) { mutableStateOf(false) }
         // Remove both the dialog dim layer and any dim inherited from its window.
         Dialog(
-            onDismissRequest = { if (!working && !closing.value) close() },
+            onDismissRequest = { /* Intentional: only explicit Cancel, Close or background action dismisses. */ },
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
-                dismissOnBackPress = !working && !closing.value,
-                dismissOnClickOutside = !working && !closing.value
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false
             )
         ) {
             val window = (LocalView.current.parent as? DialogWindowProvider)?.window
@@ -237,6 +241,33 @@ class ApkInstallActivity : ComponentActivity() {
                         }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    if (state.phase == ApkInstallUiState.Phase.RESULT) {
+                        Surface(modifier = Modifier.fillMaxWidth(),
+                            color = if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.errorContainer,
+                            shape = MaterialTheme.shapes.extraLarge) {
+                            Row(modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Icon(if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                        Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
+                                    contentDescription = null, modifier = Modifier.size(32.dp),
+                                    tint = if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onErrorContainer)
+                                Column {
+                                    Text(if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                            "Successfully installed" else "Installation finished",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold)
+                                    Text(state.name.ifBlank { state.packageName },
+                                        style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    }
+
                     if (working) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -312,7 +343,7 @@ class ApkInstallActivity : ComponentActivity() {
                             style = MaterialTheme.typography.bodyMedium)
                     }
                     if (state.phase == ApkInstallUiState.Phase.INSTALLING ||
-                        state.phase == ApkInstallUiState.Phase.RESULT) {
+                        (state.phase == ApkInstallUiState.Phase.RESULT && showMore)) {
                         ElevatedCard(modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.extraLarge) {
                             Column(modifier = Modifier.padding(14.dp),
@@ -387,6 +418,16 @@ class ApkInstallActivity : ComponentActivity() {
                                     }
                                 }
                             }
+                        }
+                    }
+                    if (state.phase == ApkInstallUiState.Phase.RESULT) {
+                        TextButton(
+                            onClick = { showMore = !showMore },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(if (showMore) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text(if (showMore) "Show less" else "Show more")
                         }
                     }
                     if (state.message.isNotBlank() &&
