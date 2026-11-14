@@ -180,7 +180,9 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("Finalizing package installation"))
         assertTrue(activity.contains("dismissOnClickOutside = false"))
         assertTrue(activity.contains("dismissOnBackPress = true"))
-        assertTrue(activity.contains("if (showMore) showMore = false"))
+        assertTrue(activity.contains("if (showMore) {"))
+        assertTrue(activity.contains("showMore = false"))
+        assertTrue(activity.contains("APK popup: Back collapsed details"))
         assertFalse(activity.contains("onDismissRequest = { if (!working"))
     }
 
