@@ -439,7 +439,7 @@ class ApkInstallActivity : ComponentActivity() {
                             onClick = {
                                 showMore = !showMore
                                 appLog.append("APK popup: details " +
-                                    if (showMore) "expanded" else "collapsed")
+                                    (if (showMore) "expanded" else "collapsed"))
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
