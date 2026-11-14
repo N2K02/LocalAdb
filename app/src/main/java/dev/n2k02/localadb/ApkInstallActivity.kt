@@ -77,6 +77,10 @@ class ApkInstallActivity : ComponentActivity() {
     private val installResultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.getStringExtra(ApkInstallForegroundService.EXTRA_SESSION) != model.session) return
+            if (intent.action == ApkInstallForegroundService.ACTION_STAGE) {
+                model.appendInstallStage(intent.getStringExtra(ApkInstallForegroundService.EXTRA_STAGE).orEmpty())
+                return
+            }
             model.directInstallResult(
                 intent.getBooleanExtra(ApkInstallForegroundService.EXTRA_SUCCESS, false),
                 intent.getStringExtra(ApkInstallForegroundService.EXTRA_MESSAGE).orEmpty()
@@ -88,7 +92,10 @@ class ApkInstallActivity : ComponentActivity() {
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onStart() {
         super.onStart()
-        val filter = IntentFilter(ApkInstallForegroundService.ACTION_RESULT)
+        val filter = IntentFilter().apply {
+            addAction(ApkInstallForegroundService.ACTION_RESULT)
+            addAction(ApkInstallForegroundService.ACTION_STAGE)
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(installResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -296,44 +303,28 @@ class ApkInstallActivity : ComponentActivity() {
                         Text("Allow LocalADB to install apps from this source in Android settings.",
                             style = MaterialTheme.typography.bodyMedium)
                     }
-                    if (state.outcome != ApkInstallUiState.Outcome.NONE) {
-                        val (label, icon, background, foreground) = when (state.outcome) {
-                            ApkInstallUiState.Outcome.SUCCESS -> InstallerOutcomeBadge(
-                                "Installed", Icons.Rounded.CheckCircle,
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.onPrimaryContainer)
-                            ApkInstallUiState.Outcome.FAILED -> InstallerOutcomeBadge(
-                                "Installation failed", Icons.Rounded.ErrorOutline,
-                                MaterialTheme.colorScheme.errorContainer,
-                                MaterialTheme.colorScheme.onErrorContainer)
-                            ApkInstallUiState.Outcome.CANCELLED -> InstallerOutcomeBadge(
-                                "Cancelled", Icons.Rounded.Info,
-                                MaterialTheme.colorScheme.surfaceContainerHighest,
-                                MaterialTheme.colorScheme.onSurface)
-                            ApkInstallUiState.Outcome.UNVERIFIED -> InstallerOutcomeBadge(
-                                "Needs verification", Icons.Rounded.Info,
-                                MaterialTheme.colorScheme.tertiaryContainer,
-                                MaterialTheme.colorScheme.onTertiaryContainer)
-                            ApkInstallUiState.Outcome.NONE -> error("Handled above")
-                        }
-                        Surface(
-                            shape = MaterialTheme.shapes.extraLarge,
-                            color = background,
-                            modifier = Modifier.align(Alignment.Start)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(icon, contentDescription = null, tint = foreground,
-                                    modifier = Modifier.size(18.dp))
-                                Text(label, color = foreground,
-                                    style = MaterialTheme.typography.labelLarge)
+                    if (state.phase == ApkInstallUiState.Phase.INSTALLING ||
+                        state.phase == ApkInstallUiState.Phase.RESULT) {
+                        ElevatedCard(modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.extraLarge) {
+                            Column(modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Live activity", style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold)
+                                state.activitySteps.forEach { step ->
+                                    Text("• $step", style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (state.phase == ApkInstallUiState.Phase.INSTALLING) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp)
+                                }
                             }
                         }
                     }
-                    if (state.message.isNotBlank()) {
+                    if (state.message.isNotBlank() &&
+                        (state.isError || state.phase == ApkInstallUiState.Phase.ERROR ||
+                         state.phase == ApkInstallUiState.Phase.READY)) {
                         if (state.isError || state.phase == ApkInstallUiState.Phase.ERROR) {
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
