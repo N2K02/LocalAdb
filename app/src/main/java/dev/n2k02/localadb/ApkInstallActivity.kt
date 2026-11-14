@@ -46,6 +46,10 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import android.view.WindowManager
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -64,6 +68,7 @@ import dev.n2k02.theme.N2K02Theme
 /** User-initiated APK entry point. Uses the same theme and Material 3 as LocalADB. */
 class ApkInstallActivity : ComponentActivity() {
     private lateinit var model: ApkInstallViewModel
+    private val closing = mutableStateOf(false)
 
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -167,11 +172,11 @@ class ApkInstallActivity : ComponentActivity() {
         val close = { closeInstaller() }
         // Remove both the dialog dim layer and any dim inherited from its window.
         Dialog(
-            onDismissRequest = { if (!working) close() },
+            onDismissRequest = { if (!working && !closing.value) close() },
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
-                dismissOnBackPress = !working,
-                dismissOnClickOutside = !working
+                dismissOnBackPress = !working && !closing.value,
+                dismissOnClickOutside = !working && !closing.value
             )
         ) {
             val window = (LocalView.current.parent as? DialogWindowProvider)?.window
@@ -410,7 +415,12 @@ class ApkInstallActivity : ComponentActivity() {
                             }
                         }
                         ApkInstallUiState.Phase.RESULT, ApkInstallUiState.Phase.ERROR ->
-                            Button(onClick = close) { Text("Close") }
+                            Button(onClick = close, enabled = !closing.value) {
+                                if (closing.value) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Text("Closing…")
+                                } else Text("Close")
+                            }
                         ApkInstallUiState.Phase.INSTALLING ->
                             TextButton(onClick = close) { Text("Close · continue in background") }
                         else -> Unit
@@ -422,8 +432,12 @@ class ApkInstallActivity : ComponentActivity() {
 
     /** Dismiss only the standalone installer; never navigate to LocalADB's main activity. */
     private fun closeInstaller() {
-        model.abandon()
-        if (isTaskRoot) finishAndRemoveTask() else finish()
+        if (closing.value) return
+        closing.value = true
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { model.abandon() }
+            if (isTaskRoot) finishAndRemoveTask() else finish()
+        }
     }
 
     private data class InstallerOutcomeBadge(
