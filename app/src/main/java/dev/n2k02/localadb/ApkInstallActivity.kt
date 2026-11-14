@@ -502,17 +502,42 @@ class ApkInstallActivity : ComponentActivity() {
                                 Button(onClick = ::requestUnknownSources) { Text("Settings") }
                             }
                         }
-                        ApkInstallUiState.Phase.RESULT, ApkInstallUiState.Phase.ERROR ->
-                            Button(onClick = close, enabled = !closing.value) {
-                                if (closing.value) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                    Text("Closing…")
-                                } else Text(
-                                    if (state.phase == ApkInstallUiState.Phase.RESULT &&
-                                        state.outcome == ApkInstallUiState.Outcome.SUCCESS) "Done"
-                                    else "Close"
-                                )
+                        ApkInstallUiState.Phase.RESULT, ApkInstallUiState.Phase.ERROR -> {
+                            Row(modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                if (state.outcome == ApkInstallUiState.Outcome.SUCCESS &&
+                                    state.packageName != packageName) {
+                                    val launch = remember(state.packageName) {
+                                        packageManager.getLaunchIntentForPackage(state.packageName)
+                                    }
+                                    if (launch != null) {
+                                        FilledTonalButton(onClick = {
+                                            if (!closing.value) {
+                                                try {
+                                                    startActivity(launch)
+                                                    closeInstaller()
+                                                } catch (failure: Exception) {
+                                                    appLog.append("APK installer: launch failed: " +
+                                                        failure.javaClass.simpleName)
+                                                }
+                                            }
+                                        }, enabled = !closing.value, modifier = Modifier.weight(1f)) {
+                                            Text("Open app")
+                                        }
+                                    }
+                                }
+                                Button(onClick = close, enabled = !closing.value,
+                                    modifier = Modifier.weight(1f)) {
+                                    if (closing.value) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp)
+                                        Text("Closing…")
+                                    } else Text(if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                        "Done" else "Close")
+                                }
                             }
+                        }
                         ApkInstallUiState.Phase.INSTALLING ->
                             TextButton(onClick = close) { Text("Close · continue in background") }
                         else -> Unit
