@@ -193,8 +193,10 @@ class ApkInstallActivity : ComponentActivity() {
                 if (showMore) {
                     showMore = false
                     appLog.append("APK popup: Back collapsed details")
+                    Log.i("LocalAdbApkInstall", "Popup Back collapsed details")
                 } else if (!working && !closing.value) {
                     appLog.append("APK popup: Back dismissed installer")
+                    Log.i("LocalAdbApkInstall", "Popup Back dismissed installer")
                     close()
                 }
             },
@@ -440,6 +442,8 @@ class ApkInstallActivity : ComponentActivity() {
                                 showMore = !showMore
                                 appLog.append("APK popup: details " +
                                     (if (showMore) "expanded" else "collapsed"))
+                                Log.i("LocalAdbApkInstall",
+                                    if (showMore) "Popup details expanded" else "Popup details collapsed")
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -568,6 +572,7 @@ class ApkInstallActivity : ComponentActivity() {
         if (closing.value) return
         closing.value = true
         appLog.append("APK popup: closing requested")
+        Log.i("LocalAdbApkInstall", "Popup close requested")
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) { model.abandon() }
@@ -575,6 +580,7 @@ class ApkInstallActivity : ComponentActivity() {
                 appLog.append("APK installer close: cleanup failed: ${failure.javaClass.simpleName}")
             } finally {
                 appLog.append("APK popup: close finished")
+                Log.i("LocalAdbApkInstall", "Popup close finishing")
                 if (isTaskRoot) finishAndRemoveTask() else finish()
             }
         }
