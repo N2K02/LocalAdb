@@ -48,6 +48,7 @@
         </activity>
         <!-- Handle APKs explicitly opened or shared from another app. -->
         <activity android:name=".ApkInstallActivity"
+            android:theme="@style/Theme.LocalAdb.ApkInstaller"
             android:exported="true"
             android:excludeFromRecents="true"
             android:taskAffinity=""
