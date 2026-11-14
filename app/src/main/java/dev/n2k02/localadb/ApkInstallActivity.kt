@@ -2,6 +2,11 @@ package dev.n2k02.localadb
 
 import android.content.ClipData
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.Manifest
+import android.os.Build
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -54,6 +59,46 @@ import dev.n2k02.theme.N2K02Theme
 class ApkInstallActivity : ComponentActivity() {
     private lateinit var model: ApkInstallViewModel
 
+    private val notificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { model.installWithAdb() }
+
+    private val installResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.getStringExtra(ApkInstallForegroundService.EXTRA_SESSION) != model.session) return
+            model.directInstallResult(
+                intent.getBooleanExtra(ApkInstallForegroundService.EXTRA_SUCCESS, false),
+                intent.getStringExtra(ApkInstallForegroundService.EXTRA_MESSAGE).orEmpty()
+            )
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter(ApkInstallForegroundService.ACTION_RESULT)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(installResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(installResultReceiver, filter)
+        }
+    }
+
+    override fun onStop() {
+        unregisterReceiver(installResultReceiver)
+        super.onStop()
+    }
+
+    private fun beginAdbInstall() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            model.installWithAdb()
+        }
+    }
+
     private val standardInstaller = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -89,8 +134,7 @@ class ApkInstallActivity : ComponentActivity() {
 
     @Composable
     private fun InstallerDialog(state: ApkInstallUiState) {
-        val working = state.phase == ApkInstallUiState.Phase.STAGING ||
-            state.phase == ApkInstallUiState.Phase.INSTALLING
+        val working = state.phase == ApkInstallUiState.Phase.STAGING
         val ready = state.phase == ApkInstallUiState.Phase.READY
         var playRecord by rememberSaveable {
             mutableStateOf(DirectInstallAttribution.enabled(this@ApkInstallActivity))
@@ -306,7 +350,7 @@ class ApkInstallActivity : ComponentActivity() {
                                 ) { Text("Native install", maxLines = 1,
                                     style = MaterialTheme.typography.labelMedium) }
                                 Button(
-                                    onClick = model::installWithAdb,
+                                    onClick = ::beginAdbInstall,
                                     modifier = Modifier.weight(0.98f),
                                     shape = MaterialTheme.shapes.extraLarge,
                                     contentPadding = PaddingValues(horizontal = 2.dp)
@@ -327,6 +371,8 @@ class ApkInstallActivity : ComponentActivity() {
                         }
                         ApkInstallUiState.Phase.RESULT, ApkInstallUiState.Phase.ERROR ->
                             Button(onClick = close) { Text("Close") }
+                        ApkInstallUiState.Phase.INSTALLING ->
+                            TextButton(onClick = close) { Text("Close · continue in background") }
                         else -> Unit
                     }
                 }
@@ -336,7 +382,6 @@ class ApkInstallActivity : ComponentActivity() {
 
     /** Dismiss only the standalone installer; never navigate to LocalADB's main activity. */
     private fun closeInstaller() {
-        if (model.state.value.phase == ApkInstallUiState.Phase.INSTALLING) return
         model.abandon()
         if (isTaskRoot) finishAndRemoveTask() else finish()
     }
