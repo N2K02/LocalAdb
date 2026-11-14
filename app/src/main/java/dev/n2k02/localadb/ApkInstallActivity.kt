@@ -404,8 +404,13 @@ class ApkInstallActivity : ComponentActivity() {
                                 val transferPercent = transfer?.let {
                                     Regex("""(\d+)% transferred""").find(it)?.groupValues?.get(1)?.toIntOrNull()
                                 }
+                                val finalizing = state.activitySteps.lastOrNull()?.let {
+                                    it.contains("pm install-commit") ||
+                                        it.contains("Verifying installed package") ||
+                                        it.contains("ADB package manager returned")
+                                } == true
                                 if (state.phase == ApkInstallUiState.Phase.INSTALLING) {
-                                    if (transferPercent != null) {
+                                    if (transferPercent != null && !finalizing) {
                                         LinearProgressIndicator(
                                             progress = { transferPercent.coerceIn(0, 100) / 100f },
                                             modifier = Modifier.fillMaxWidth()
@@ -415,7 +420,8 @@ class ApkInstallActivity : ComponentActivity() {
                                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     } else {
                                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                                        Text("Waiting for installation stage",
+                                        Text(if (finalizing) "Finalizing package installation"
+                                            else "Waiting for installation stage",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
