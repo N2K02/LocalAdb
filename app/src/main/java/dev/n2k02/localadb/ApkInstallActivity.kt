@@ -189,10 +189,13 @@ class ApkInstallActivity : ComponentActivity() {
         var showMore by rememberSaveable(state.phase.name) { mutableStateOf(false) }
         // Remove both the dialog dim layer and any dim inherited from its window.
         Dialog(
-            onDismissRequest = { /* Intentional: only explicit Cancel, Close or background action dismisses. */ },
+            onDismissRequest = {
+                if (showMore) showMore = false
+                else if (!working && !closing.value) close()
+            },
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
-                dismissOnBackPress = false,
+                dismissOnBackPress = true,
                 dismissOnClickOutside = false
             )
         ) {
