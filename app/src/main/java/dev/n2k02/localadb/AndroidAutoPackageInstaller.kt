@@ -356,7 +356,7 @@ internal object AndroidAutoPackageInstaller {
     /** AIDL UserService installer based on the upstream Shizuku demo.
      * The service uses Android package install sessions under shell UID.
      */
-    internal suspend fun installDirect(context: Context, file: java.io.File): String {
+    internal suspend fun installDirect(context: Context, file: java.io.File, onStage: (String) -> Unit = {}): String {
         check(file.isFile && file.length() in 1..ApkInstallPolicy.MAX_APK_BYTES) {
             "Selected APK is missing or too large"
         }
@@ -365,9 +365,9 @@ internal object AndroidAutoPackageInstaller {
         }
         val requestedInstaller = DirectInstallAttribution.requestedInstaller(context)
         val args = Shizuku.UserServiceArgs(ComponentName(context, DirectApkInstallService::class.java))
-            .tag("direct-apk-aidl-v2")
-            .version(4)
-            .processNameSuffix("apk_aidl_v2")
+            .tag("direct-apk-aidl-v3")
+            .version(5)
+            .processNameSuffix("apk_aidl_v3")
             .daemon(false)
         val attached = CompletableDeferred<IBinder>()
         val conn = object : ServiceConnection {
@@ -387,8 +387,13 @@ internal object AndroidAutoPackageInstaller {
             check(installer.serviceUid == Process.SHELL_UID) {
                 "Direct installer is not running as shell"
             }
+            val callback = object : IInstallProgressCallback.Stub() {
+                override fun onStage(stage: String?) {
+                    if (!stage.isNullOrBlank()) onStage(stage.take(160))
+                }
+            }
             return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-                installer.installApk(fd, file.length(), requestedInstaller.orEmpty())
+                installer.installApk(fd, file.length(), requestedInstaller.orEmpty(), callback)
             }
         } finally {
             withContext(NonCancellable) {

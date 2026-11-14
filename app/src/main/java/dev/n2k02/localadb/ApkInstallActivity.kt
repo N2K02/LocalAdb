@@ -2,6 +2,13 @@ package dev.n2k02.localadb
 
 import android.content.ClipData
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.app.NotificationManager
+import android.Manifest
+import android.annotation.SuppressLint
+import android.os.Build
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -17,13 +24,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.InstallMobile
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ElevatedCard
@@ -34,12 +47,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import android.view.WindowManager
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +77,73 @@ import dev.n2k02.theme.N2K02Theme
 /** User-initiated APK entry point. Uses the same theme and Material 3 as LocalADB. */
 class ApkInstallActivity : ComponentActivity() {
     private lateinit var model: ApkInstallViewModel
+    private val closing = mutableStateOf(false)
+
+    private val notificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { model.installWithAdb() }
+
+    private val installResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.getStringExtra(ApkInstallForegroundService.EXTRA_SESSION) != model.session) return
+            if (intent.action == ApkInstallForegroundService.ACTION_STAGE) {
+                model.appendInstallStage(intent.getStringExtra(ApkInstallForegroundService.EXTRA_STAGE).orEmpty())
+                return
+            }
+            model.directInstallResult(
+                intent.getBooleanExtra(ApkInstallForegroundService.EXTRA_SUCCESS, false),
+                intent.getStringExtra(ApkInstallForegroundService.EXTRA_MESSAGE).orEmpty()
+            )
+        }
+    }
+
+    // Android 12 and below use the legacy overload; Android 13+ specifies NOT_EXPORTED.
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter().apply {
+            addAction(ApkInstallForegroundService.ACTION_RESULT)
+            addAction(ApkInstallForegroundService.ACTION_STAGE)
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(installResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(installResultReceiver, filter)
+        }
+    }
+
+    override fun onStop() {
+        unregisterReceiver(installResultReceiver)
+        super.onStop()
+    }
+
+    private fun notificationProblem(): String? {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return "Android notification permission is off. Installation can continue, but alerts may be hidden."
+        val manager = getSystemService(NotificationManager::class.java)
+        if (!manager.areNotificationsEnabled()) return "LocalADB notifications are disabled in Android settings."
+        if (manager.getNotificationChannel("apk_install_status")?.importance ==
+            NotificationManager.IMPORTANCE_NONE
+        ) return "The APK installations notification channel is disabled."
+        return null
+    }
+
+    private fun openAppNotificationSettings() {
+        startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+    }
+
+    private fun beginAdbInstall() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            model.installWithAdb()
+        }
+    }
 
     private val standardInstaller = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -89,59 +180,104 @@ class ApkInstallActivity : ComponentActivity() {
 
     @Composable
     private fun InstallerDialog(state: ApkInstallUiState) {
-        val working = state.phase == ApkInstallUiState.Phase.STAGING ||
-            state.phase == ApkInstallUiState.Phase.INSTALLING
+        val working = state.phase == ApkInstallUiState.Phase.STAGING
         val ready = state.phase == ApkInstallUiState.Phase.READY
         var playRecord by rememberSaveable {
             mutableStateOf(DirectInstallAttribution.enabled(this@ApkInstallActivity))
         }
-        val close = { model.abandon(); finish() }
+        val close = { closeInstaller() }
+        var showMore by rememberSaveable(state.phase.name) { mutableStateOf(false) }
+        // Remove both the dialog dim layer and any dim inherited from its window.
         Dialog(
-            onDismissRequest = { if (!working) close() },
+            onDismissRequest = {
+                if (showMore) {
+                    showMore = false
+                    appLog.append("APK popup: Back collapsed details")
+                    Log.i("LocalAdbApkInstall", "Popup Back collapsed details")
+                } else if (!working && !closing.value) {
+                    appLog.append("APK popup: Back dismissed installer")
+                    Log.i("LocalAdbApkInstall", "Popup Back dismissed installer")
+                    close()
+                }
+            },
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
-                dismissOnBackPress = !working,
-                dismissOnClickOutside = !working
+                dismissOnBackPress = true,
+                dismissOnClickOutside = false
             )
         ) {
+            val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+            SideEffect {
+                window?.setDimAmount(0f)
+                window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            }
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.96f)
-                    .widthIn(max = 560.dp)
+                    .widthIn(max = 540.dp)
                     .wrapContentHeight(),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shape = MaterialTheme.shapes.extraLarge,
                 tonalElevation = 6.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 22.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)
+                        .heightIn(max = 680.dp).verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = MaterialTheme.shapes.extraLarge
-                    ) {
-                        Icon(
-                            Icons.Rounded.InstallMobile,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(12.dp).size(28.dp)
-                        )
+                    Row(modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Surface(color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = MaterialTheme.shapes.large) {
+                            Icon(Icons.Rounded.InstallMobile, contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(10.dp).size(24.dp))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("LocalADB", style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold)
+                            Text(when (state.phase) {
+                                ApkInstallUiState.Phase.STAGING -> "Preparing APK"
+                                ApkInstallUiState.Phase.READY -> "Ready to install"
+                                ApkInstallUiState.Phase.PERMISSION -> "Allow installation"
+                                ApkInstallUiState.Phase.INSTALLING -> "Installing package"
+                                ApkInstallUiState.Phase.RESULT -> if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                    "Installation complete" else "Installation finished"
+                                ApkInstallUiState.Phase.ERROR -> "Unable to open APK"
+                            }, style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                    Text(
-                        when (state.phase) {
-                            ApkInstallUiState.Phase.STAGING -> "Preparing APK"
-                            ApkInstallUiState.Phase.READY -> "Ready to install"
-                            ApkInstallUiState.Phase.PERMISSION -> "Allow installation"
-                            ApkInstallUiState.Phase.INSTALLING -> "Installing APK"
-                            ApkInstallUiState.Phase.RESULT -> "Installation result"
-                            ApkInstallUiState.Phase.ERROR -> "Couldn't open APK"
-                        },
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
-                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    if (state.phase == ApkInstallUiState.Phase.RESULT) {
+                        Surface(modifier = Modifier.fillMaxWidth(),
+                            color = if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.errorContainer,
+                            shape = MaterialTheme.shapes.extraLarge) {
+                            Row(modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Icon(if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                        Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
+                                    contentDescription = null, modifier = Modifier.size(32.dp),
+                                    tint = if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onErrorContainer)
+                                Column {
+                                    Text(if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                            "Successfully installed" else "Installation finished",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold)
+                                    Text(state.name.ifBlank { state.packageName },
+                                        style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
+                    }
+
                     if (working) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -203,48 +339,122 @@ class ApkInstallActivity : ComponentActivity() {
                             })
                         }
                     }
+                    if (state.phase == ApkInstallUiState.Phase.INSTALLING) {
+                        notificationProblem()?.let { problem ->
+                            Text(problem, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = ::openAppNotificationSettings) {
+                                Text("Notification settings")
+                            }
+                        }
+                    }
                     if (state.phase == ApkInstallUiState.Phase.PERMISSION) {
                         Text("Allow LocalADB to install apps from this source in Android settings.",
                             style = MaterialTheme.typography.bodyMedium)
                     }
-                    if (state.outcome != ApkInstallUiState.Outcome.NONE) {
-                        val (label, icon, background, foreground) = when (state.outcome) {
-                            ApkInstallUiState.Outcome.SUCCESS -> InstallerOutcomeBadge(
-                                "Installed", Icons.Rounded.CheckCircle,
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.onPrimaryContainer)
-                            ApkInstallUiState.Outcome.FAILED -> InstallerOutcomeBadge(
-                                "Installation failed", Icons.Rounded.ErrorOutline,
-                                MaterialTheme.colorScheme.errorContainer,
-                                MaterialTheme.colorScheme.onErrorContainer)
-                            ApkInstallUiState.Outcome.CANCELLED -> InstallerOutcomeBadge(
-                                "Cancelled", Icons.Rounded.Info,
-                                MaterialTheme.colorScheme.surfaceContainerHighest,
-                                MaterialTheme.colorScheme.onSurface)
-                            ApkInstallUiState.Outcome.UNVERIFIED -> InstallerOutcomeBadge(
-                                "Needs verification", Icons.Rounded.Info,
-                                MaterialTheme.colorScheme.tertiaryContainer,
-                                MaterialTheme.colorScheme.onTertiaryContainer)
-                            ApkInstallUiState.Outcome.NONE -> error("Handled above")
-                        }
-                        Surface(
-                            shape = MaterialTheme.shapes.extraLarge,
-                            color = background,
-                            modifier = Modifier.align(Alignment.Start)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(icon, contentDescription = null, tint = foreground,
-                                    modifier = Modifier.size(18.dp))
-                                Text(label, color = foreground,
-                                    style = MaterialTheme.typography.labelLarge)
+                    if (state.phase == ApkInstallUiState.Phase.INSTALLING ||
+                        (state.phase == ApkInstallUiState.Phase.RESULT && showMore)) {
+                        ElevatedCard(modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.extraLarge) {
+                            Column(modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Live activity", style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold)
+                                    val status = when {
+                                        state.phase == ApkInstallUiState.Phase.INSTALLING -> "RUNNING"
+                                        state.outcome == ApkInstallUiState.Outcome.SUCCESS -> "COMPLETE"
+                                        else -> "FINISHED"
+                                    }
+                                    Text(status, style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary)
+                                }
+                                state.activitySteps.forEach { step ->
+                                    val detail = step.substringAfter("  ", step)
+                                    val timestamp = step.substringBefore("  ", "")
+                                    val succeeded = detail.endsWith("completed") ||
+                                        detail.contains("verified", ignoreCase = true) ||
+                                        detail.contains("returned: Success")
+                                    val failed = detail.contains("failed", ignoreCase = true) ||
+                                        detail.contains("cancelled", ignoreCase = true)
+                                    Row(modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Icon(
+                                            when {
+                                                failed -> Icons.Rounded.ErrorOutline
+                                                succeeded -> Icons.Rounded.CheckCircle
+                                                detail.contains("starting") || detail.contains("transferring") ->
+                                                    Icons.Rounded.HourglassTop
+                                                else -> Icons.Rounded.Terminal
+                                            }, contentDescription = null,
+                                            tint = when {
+                                                failed -> MaterialTheme.colorScheme.error
+                                                succeeded -> MaterialTheme.colorScheme.primary
+                                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            }, modifier = Modifier.size(18.dp)
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(detail, style = MaterialTheme.typography.bodySmall)
+                                            if (timestamp.isNotBlank()) {
+                                                Text(timestamp, style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                    }
+                                }
+                                val transfer = state.activitySteps.lastOrNull {
+                                    it.contains("pm install-write:") && it.contains("% transferred")
+                                }
+                                val transferPercent = transfer?.let {
+                                    Regex("""(\d+)% transferred""").find(it)?.groupValues?.get(1)?.toIntOrNull()
+                                }
+                                val finalizing = state.activitySteps.lastOrNull()?.let {
+                                    it.contains("pm install-commit") ||
+                                        it.contains("Verifying installed package") ||
+                                        it.contains("ADB package manager returned")
+                                } == true
+                                if (state.phase == ApkInstallUiState.Phase.INSTALLING) {
+                                    if (transferPercent != null && !finalizing) {
+                                        LinearProgressIndicator(
+                                            progress = { transferPercent.coerceIn(0, 100) / 100f },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Text("APK transfer $transferPercent% · package commit is separate",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    } else {
+                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                        Text(if (finalizing) "Finalizing package installation"
+                                            else "Waiting for installation stage",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
                             }
                         }
                     }
-                    if (state.message.isNotBlank()) {
+                    if (state.phase == ApkInstallUiState.Phase.RESULT) {
+                        TextButton(
+                            onClick = {
+                                showMore = !showMore
+                                appLog.append("APK popup: details " +
+                                    (if (showMore) "expanded" else "collapsed"))
+                                Log.i("LocalAdbApkInstall",
+                                    if (showMore) "Popup details expanded" else "Popup details collapsed")
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(if (showMore) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                contentDescription = null, modifier = Modifier.size(18.dp))
+                            Text(if (showMore) "Show less" else "Show more")
+                        }
+                    }
+                    if (state.message.isNotBlank() &&
+                        (state.phase == ApkInstallUiState.Phase.ERROR ||
+                         state.phase == ApkInstallUiState.Phase.READY)) {
                         if (state.isError || state.phase == ApkInstallUiState.Phase.ERROR) {
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
@@ -272,20 +482,6 @@ class ApkInstallActivity : ComponentActivity() {
                                 style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    if (state.sourceDetails.isNotBlank()) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large,
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest
-                        ) {
-                            Text(
-                                state.sourceDetails,
-                                modifier = Modifier.padding(12.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
                     when (state.phase) {
                         ApkInstallUiState.Phase.READY -> {
                             Row(
@@ -306,7 +502,7 @@ class ApkInstallActivity : ComponentActivity() {
                                 ) { Text("Native install", maxLines = 1,
                                     style = MaterialTheme.typography.labelMedium) }
                                 Button(
-                                    onClick = model::installWithAdb,
+                                    onClick = ::beginAdbInstall,
                                     modifier = Modifier.weight(0.98f),
                                     shape = MaterialTheme.shapes.extraLarge,
                                     contentPadding = PaddingValues(horizontal = 2.dp)
@@ -325,8 +521,45 @@ class ApkInstallActivity : ComponentActivity() {
                                 Button(onClick = ::requestUnknownSources) { Text("Settings") }
                             }
                         }
-                        ApkInstallUiState.Phase.RESULT, ApkInstallUiState.Phase.ERROR ->
-                            Button(onClick = close) { Text("Close") }
+                        ApkInstallUiState.Phase.RESULT, ApkInstallUiState.Phase.ERROR -> {
+                            Row(modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                if (state.outcome == ApkInstallUiState.Outcome.SUCCESS &&
+                                    state.packageName != packageName) {
+                                    val launch = remember(state.packageName) {
+                                        packageManager.getLaunchIntentForPackage(state.packageName)
+                                    }
+                                    if (launch != null) {
+                                        FilledTonalButton(onClick = {
+                                            if (!closing.value) {
+                                                try {
+                                                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    startActivity(launch)
+                                                    closeInstaller()
+                                                } catch (failure: Exception) {
+                                                    appLog.append("APK installer: launch failed: " +
+                                                        failure.javaClass.simpleName)
+                                                }
+                                            }
+                                        }, enabled = !closing.value, modifier = Modifier.weight(1f)) {
+                                            Text("Open app")
+                                        }
+                                    }
+                                }
+                                Button(onClick = close, enabled = !closing.value,
+                                    modifier = Modifier.weight(1f)) {
+                                    if (closing.value) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp)
+                                        Text("Closing…")
+                                    } else Text(if (state.outcome == ApkInstallUiState.Outcome.SUCCESS)
+                                        "Done" else "Close")
+                                }
+                            }
+                        }
+                        ApkInstallUiState.Phase.INSTALLING ->
+                            TextButton(onClick = close) { Text("Close · continue in background") }
                         else -> Unit
                     }
                 }
@@ -334,12 +567,24 @@ class ApkInstallActivity : ComponentActivity() {
         }
     }
 
-    private data class InstallerOutcomeBadge(
-        val label: String,
-        val icon: androidx.compose.ui.graphics.vector.ImageVector,
-        val background: androidx.compose.ui.graphics.Color,
-        val foreground: androidx.compose.ui.graphics.Color
-    )
+    /** Dismiss only the standalone installer; never navigate to LocalADB's main activity. */
+    private fun closeInstaller() {
+        if (closing.value) return
+        closing.value = true
+        appLog.append("APK popup: closing requested")
+        Log.i("LocalAdbApkInstall", "Popup close requested")
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) { model.abandon() }
+            } catch (failure: Exception) {
+                appLog.append("APK installer close: cleanup failed: ${failure.javaClass.simpleName}")
+            } finally {
+                appLog.append("APK popup: close finished")
+                Log.i("LocalAdbApkInstall", "Popup close finishing")
+                if (isTaskRoot) finishAndRemoveTask() else finish()
+            }
+        }
+    }
 
     private fun requestUnknownSources() {
         try {
@@ -371,7 +616,7 @@ class ApkInstallActivity : ComponentActivity() {
             val intent = installerIntent()
             if (intent.resolveActivity(packageManager) == null)
                 error("No Android package installer is available")
-            model.installing()
+            model.installing(native = true)
             standardInstaller.launch(intent)
             appLog.append("APK installer: native confirmation launched")
         } catch (failure: Exception) {

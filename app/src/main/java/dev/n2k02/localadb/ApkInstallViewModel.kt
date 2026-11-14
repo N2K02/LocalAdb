@@ -18,6 +18,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 internal data class ApkInstallUiState(
     val loading: Boolean = true,
@@ -28,6 +31,7 @@ internal data class ApkInstallUiState(
     val message: String = "",
     val isError: Boolean = false,
     val sourceDetails: String = "",
+    val activitySteps: List<String> = emptyList(),
     val outcome: Outcome = Outcome.NONE,
     val phase: Phase = Phase.STAGING,
 ) {
@@ -132,40 +136,51 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             return
         }
         installing()
-        viewModelScope.launch {
-            try {
-                appLog.append("APK installer: streaming APK to ADB package manager")
-                val requestedInstaller = DirectInstallAttribution.requestedInstaller(app)
-                val result = withContext(Dispatchers.IO) {
-                    val staged = ApkInstallProvider.file(app, session)
-                    AndroidAutoPackageInstaller.validateInstallCompatibility(app, staged)
-                    AndroidAutoPackageInstaller.installDirect(app, staged)
-                }
-                check(result == "Success") { "Package manager: $result" }
-                if (installed()) {
-                    complete(resultSuccess = true, cancelled = false,
-                        requestedInstaller = requestedInstaller)
-                } else {
-                    resetReady("ADB returned success, but the installed package could not be verified.", error = true)
-                    appLog.append("APK installer: ADB result unverified")
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                appLog.append("APK installer: ADB install failed (${failure.javaClass.simpleName}): " +
-                    (failure.message ?: "unknown").take(220))
-                resetReady("ADB installation failed: ${failure.message ?: "unknown error"}. Try Native install.", error = true)
-            }
+        val request = Intent(app, ApkInstallForegroundService::class.java).apply {
+            action = ApkInstallForegroundService.ACTION_INSTALL
+            putExtra(ApkInstallForegroundService.EXTRA_SESSION, session)
+            putExtra(ApkInstallForegroundService.EXTRA_PACKAGE, state.value.packageName)
+            putExtra(ApkInstallForegroundService.EXTRA_NAME, state.value.name)
+            priorVersion?.let { putExtra(ApkInstallForegroundService.EXTRA_OLD_VERSION, it) }
+            priorUpdate?.let { putExtra(ApkInstallForegroundService.EXTRA_OLD_UPDATE, it) }
         }
+        try {
+            app.startForegroundService(request)
+            appLog.append("APK installer: foreground ADB install started")
+        } catch (failure: Exception) {
+            resetReady("Could not start background installer: ${failure.message}", error = true)
+        }
+    }
+
+    private fun timedStep(stage: String): String =
+        SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date()) + "  " + stage
+
+    fun appendInstallStage(stage: String) {
+        if (state.value.phase != ApkInstallUiState.Phase.INSTALLING) return
+        state.value = state.value.copy(activitySteps = (state.value.activitySteps + timedStep(stage)).takeLast(8))
+    }
+
+    /** Foreground service owns installation and staged APK cleanup after start. */
+    fun directInstallResult(success: Boolean, message: String) {
+        if (state.value.phase != ApkInstallUiState.Phase.INSTALLING) return
+        state.value = state.value.copy(
+            phase = ApkInstallUiState.Phase.RESULT,
+            outcome = if (success) ApkInstallUiState.Outcome.SUCCESS else ApkInstallUiState.Outcome.FAILED,
+            message = message,
+            activitySteps = (state.value.activitySteps + timedStep(if (success) "Installation verified" else message.take(180))).takeLast(8),
+            isError = !success
+        )
+        pendingCleanup = true
     }
 
     fun stagedUri() = ApkInstallProvider.uri(app, session)
 
-    fun installing() {
+    fun installing(native: Boolean = false) {
         if (state.value.phase != ApkInstallUiState.Phase.READY &&
             state.value.phase != ApkInstallUiState.Phase.PERMISSION) return
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.INSTALLING,
-            message = "", isError = false, outcome = ApkInstallUiState.Outcome.NONE)
+            message = "", isError = false, outcome = ApkInstallUiState.Outcome.NONE,
+            activitySteps = listOf(timedStep(if (native) "Opening Android package installer" else "Starting ADB installation service")))
     }
 
     fun permissionRequired() {
@@ -190,6 +205,12 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
 
     fun complete(resultSuccess: Boolean, cancelled: Boolean, requestedInstaller: String? = null) {
         val verified = installed()
+        val completedStep = when {
+            cancelled -> "Android installation cancelled"
+            resultSuccess && verified -> "Native package installation verified"
+            resultSuccess -> "Native installer returned success; verification pending"
+            else -> "Native installer failed or returned no success"
+        }
         val text = ApkInstallPolicy.result(resultSuccess, verified, cancelled)
         val sourceDetails = if (resultSuccess && verified) {
             DirectInstallAttribution.sourceDetails(requestedInstaller,
@@ -202,7 +223,9 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             else -> ApkInstallUiState.Outcome.FAILED
         }
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT,
-            message = text, isError = outcome == ApkInstallUiState.Outcome.FAILED,
+            message = text, activitySteps = (state.value.activitySteps + timedStep(completedStep) +
+                if (outcome == ApkInstallUiState.Outcome.FAILED) listOf(timedStep(text.take(180))) else emptyList()).takeLast(8),
+            isError = outcome == ApkInstallUiState.Outcome.FAILED,
             sourceDetails = sourceDetails, outcome = outcome)
         appLog.append("APK installer: $text; " + sourceDetails.replace('\n', ' ').take(250))
         pendingCleanup = true
@@ -212,7 +235,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
     }
 
     fun abandon() {
-        if (state.value.phase == ApkInstallUiState.Phase.INSTALLING) return
+        if (state.value.phase == ApkInstallUiState.Phase.INSTALLING || pendingCleanup) return
+        pendingCleanup = true
         app.revokeUriPermission(stagedUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION)
         ApkInstallProvider.cleanup(app, session)
     }
