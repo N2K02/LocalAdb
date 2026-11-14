@@ -17,6 +17,18 @@ class ApkInstallContractTest {
         assertTrue(xml.contains("android:exported=\"false\""))
     }
 
+    @Test fun openWithApkUsesTransparentDialogHostInsteadOfMainAppBackground() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        val styles = File("src/main/res/values/styles.xml").readText()
+        val handler = manifest.substringAfter("<activity android:name=\".ApkInstallActivity\"")
+            .substringBefore("</activity>")
+        assertTrue(handler.contains("android:theme=\"@style/Theme.LocalAdb.ApkInstaller\""))
+        assertTrue(styles.contains("name=\"Theme.LocalAdb.ApkInstaller\""))
+        assertTrue(styles.contains("<item name=\"android:windowIsTranslucent\">true</item>"))
+        assertTrue(styles.contains("<item name=\"android:windowBackground\">@android:color/transparent</item>"))
+        assertFalse(handler.contains("android.intent.category.LAUNCHER"))
+    }
+
     @Test fun externalInstallerIsTaskIsolatedAndClosingNeverOpensHome() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         val installer = manifest.substringAfter("<activity android:name=\".ApkInstallActivity\"")
