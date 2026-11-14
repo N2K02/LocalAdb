@@ -128,15 +128,15 @@ class ApkInstallForegroundService : Service() {
                     .putExtra(EXTRA_SESSION, session)
                     .putExtra(EXTRA_SUCCESS, ok)
                     .putExtra(EXTRA_MESSAGE, completedMessage))
-                notifications.notify(
+                runCatching { notifications.notify(
                     RESULT_ID, notification(
                         if (ok) "APK installed" else "APK installation failed",
                         message, false
                     )
-                )
+                ) }.onFailure { Log.w("LocalAdbApkInstall", "Result notification unavailable", it) }
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 busy.set(false)
-                stopSelfResult(startId)
+                stopSelf()
             }
         }
         return START_NOT_STICKY
