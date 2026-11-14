@@ -113,7 +113,7 @@ class ApkInstallContractTest {
         assertTrue(File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText().contains("DirectInstallAttribution.readBack(applicationContext, pkg)"))
         assertTrue(ui.contains("Google Play as installer of record"))
         assertTrue(ui.contains("DirectInstallAttribution.setEnabled("))
-        assertTrue(ui.contains("state.sourceDetails"))
+        assertTrue(ui.contains("Live activity"))
         assertTrue(aidl.contains("String installerPackageName"))
         assertTrue(ui.contains("Native install"))
         assertTrue(caller.contains("internal suspend fun startWithLocalHelper("))
@@ -135,22 +135,21 @@ class ApkInstallContractTest {
         assertFalse(code.contains("android.app.AlertDialog"))
     }
 
-    @Test fun intentInstallerShowsDistinctOutcomeBadgesAndKeepsFailureDetails() {
+    @Test fun installerShowsRealStagesInsteadOfResultCard() {
         val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
-        val viewModel = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
-        assertTrue(viewModel.contains("enum class Outcome { NONE, SUCCESS, FAILED, CANCELLED, UNVERIFIED }"))
-        assertTrue(viewModel.contains("cancelled -> ApkInstallUiState.Outcome.CANCELLED"))
-        assertTrue(viewModel.contains("resultSuccess && verified -> ApkInstallUiState.Outcome.SUCCESS"))
-        assertTrue(viewModel.contains("resultSuccess -> ApkInstallUiState.Outcome.UNVERIFIED"))
-        assertTrue(viewModel.contains("else -> ApkInstallUiState.Outcome.FAILED"))
-        assertTrue(activity.contains("state.outcome != ApkInstallUiState.Outcome.NONE"))
-        assertTrue(activity.contains("InstallerOutcomeBadge("))
-        assertTrue(activity.contains("\"Installed\""))
-        assertTrue(activity.contains("\"Installation failed\""))
-        assertTrue(activity.contains("\"Cancelled\""))
-        assertTrue(activity.contains("\"Needs verification\""))
+        val model = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
+        assertTrue(activity.contains("Live activity"))
+        assertTrue(activity.contains("state.activitySteps.forEach"))
+        assertFalse(activity.contains("InstallerOutcomeBadge("))
+        assertTrue(activity.contains("if (closing.value) return"))
+        assertTrue(activity.contains("Closing…"))
+        assertTrue(activity.contains("withContext(Dispatchers.IO) { model.abandon() }"))
+        assertTrue(model.contains("fun appendInstallStage("))
+        assertTrue(model.contains("fun directInstallResult("))
+        assertTrue(service.contains("pm install-create → install-write → install-commit"))
+        assertTrue(service.contains("Verifying installed package version"))
         assertTrue(activity.contains("state.message.isNotBlank()"))
-        assertTrue(activity.contains("state.sourceDetails.isNotBlank()"))
     }
 
     @Test fun blockedNotificationStateIsExplainedAndLogged() {
