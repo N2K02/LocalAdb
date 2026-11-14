@@ -148,6 +148,20 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("state.sourceDetails.isNotBlank()"))
     }
 
+    @Test fun blockedNotificationStateIsExplainedAndLogged() {
+        val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
+        assertTrue(activity.contains("notificationProblem()"))
+        assertTrue(activity.contains("Settings.ACTION_APP_NOTIFICATION_SETTINGS"))
+        assertTrue(activity.contains("Notification settings"))
+        assertTrue(activity.contains("POST_NOTIFICATIONS"))
+        assertTrue(service.contains("fun notificationAvailability()"))
+        assertTrue(service.contains("areNotificationsEnabled()"))
+        assertTrue(service.contains("IMPORTANCE_NONE"))
+        assertTrue(service.contains("APK notification: foreground start"))
+        assertTrue(service.contains("APK notification: completion"))
+    }
+
     @Test fun foregroundInstallNotificationsAndBackgroundDismissal() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
