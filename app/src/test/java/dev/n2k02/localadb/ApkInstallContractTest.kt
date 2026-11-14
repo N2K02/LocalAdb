@@ -165,6 +165,21 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("state.message.isNotBlank()"))
     }
 
+    @Test fun modernTimelineShowsTimestampedRealProgress() {
+        val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val model = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(activity.contains("HorizontalDivider("))
+        assertTrue(activity.contains("LinearProgressIndicator("))
+        assertTrue(activity.contains("transferPercent.coerceIn(0, 100) / 100f"))
+        assertTrue(activity.contains("package commit is separate"))
+        assertTrue(activity.contains("Icons.Rounded.CheckCircle"))
+        assertTrue(activity.contains("Icons.Rounded.HourglassTop"))
+        assertTrue(activity.contains("timestamp"))
+        assertTrue(model.contains("SimpleDateFormat("))
+        assertTrue(model.contains("fun appendInstallStage("))
+        assertTrue(model.contains("timedStep(stage)"))
+    }
+
     @Test fun notificationUsesTransparentMonochromeSmallIcon() {
         val icon = File("src/main/res/drawable/ic_localadb_notification.xml").readText()
         val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
