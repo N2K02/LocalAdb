@@ -235,7 +235,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
     }
 
     fun abandon() {
-        if (state.value.phase == ApkInstallUiState.Phase.INSTALLING) return
+        if (state.value.phase == ApkInstallUiState.Phase.INSTALLING || pendingCleanup) return
+        pendingCleanup = true
         app.revokeUriPermission(stagedUri(), Intent.FLAG_GRANT_READ_URI_PERMISSION)
         ApkInstallProvider.cleanup(app, session)
     }
