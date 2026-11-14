@@ -515,6 +515,7 @@ class ApkInstallActivity : ComponentActivity() {
                                         FilledTonalButton(onClick = {
                                             if (!closing.value) {
                                                 try {
+                                                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                                     startActivity(launch)
                                                     closeInstaller()
                                                 } catch (failure: Exception) {
