@@ -161,7 +161,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             phase = ApkInstallUiState.Phase.RESULT,
             outcome = if (success) ApkInstallUiState.Outcome.SUCCESS else ApkInstallUiState.Outcome.FAILED,
             message = message,
-            activitySteps = (state.value.activitySteps + if (success) "Installation verified" else "Installation failed").takeLast(6),
+            activitySteps = (state.value.activitySteps + if (success) "Installation verified" else message.take(180)).takeLast(6),
             isError = !success
         )
         pendingCleanup = true
@@ -217,7 +217,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             else -> ApkInstallUiState.Outcome.FAILED
         }
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT,
-            message = text, activitySteps = (state.value.activitySteps + completedStep).takeLast(6),
+            message = text, activitySteps = (state.value.activitySteps + completedStep +
+                if (outcome == ApkInstallUiState.Outcome.FAILED) listOf(text.take(180)) else emptyList()).takeLast(6),
             isError = outcome == ApkInstallUiState.Outcome.FAILED,
             sourceDetails = sourceDetails, outcome = outcome)
         appLog.append("APK installer: $text; " + sourceDetails.replace('\n', ' ').take(250))
