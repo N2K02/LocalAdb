@@ -28,6 +28,7 @@ internal data class ApkInstallUiState(
     val message: String = "",
     val isError: Boolean = false,
     val sourceDetails: String = "",
+    val activitySteps: List<String> = emptyList(),
     val outcome: Outcome = Outcome.NONE,
     val phase: Phase = Phase.STAGING,
 ) {
@@ -148,6 +149,11 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         }
     }
 
+    fun appendInstallStage(stage: String) {
+        if (state.value.phase != ApkInstallUiState.Phase.INSTALLING) return
+        state.value = state.value.copy(activitySteps = (state.value.activitySteps + stage).takeLast(6))
+    }
+
     /** Foreground service owns installation and staged APK cleanup after start. */
     fun directInstallResult(success: Boolean, message: String) {
         if (state.value.phase != ApkInstallUiState.Phase.INSTALLING) return
@@ -155,6 +161,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             phase = ApkInstallUiState.Phase.RESULT,
             outcome = if (success) ApkInstallUiState.Outcome.SUCCESS else ApkInstallUiState.Outcome.FAILED,
             message = message,
+            activitySteps = (state.value.activitySteps + if (success) "Installation verified" else "Installation failed").takeLast(6),
             isError = !success
         )
         pendingCleanup = true
@@ -166,7 +173,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         if (state.value.phase != ApkInstallUiState.Phase.READY &&
             state.value.phase != ApkInstallUiState.Phase.PERMISSION) return
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.INSTALLING,
-            message = "", isError = false, outcome = ApkInstallUiState.Outcome.NONE)
+            message = "", isError = false, outcome = ApkInstallUiState.Outcome.NONE,
+            activitySteps = listOf("Starting ADB installation service"))
     }
 
     fun permissionRequired() {
