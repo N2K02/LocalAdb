@@ -32,6 +32,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.InstallMobile
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ElevatedCard
@@ -43,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
@@ -313,15 +317,74 @@ class ApkInstallActivity : ComponentActivity() {
                             shape = MaterialTheme.shapes.extraLarge) {
                             Column(modifier = Modifier.padding(14.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Live activity", style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold)
+                                Row(modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Live activity", style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold)
+                                    val status = when {
+                                        state.phase == ApkInstallUiState.Phase.INSTALLING -> "RUNNING"
+                                        state.outcome == ApkInstallUiState.Outcome.SUCCESS -> "COMPLETE"
+                                        else -> "FINISHED"
+                                    }
+                                    Text(status, style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary)
+                                }
                                 state.activitySteps.forEach { step ->
-                                    Text("• $step", style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    val detail = step.substringAfter("  ", step)
+                                    val timestamp = step.substringBefore("  ", "")
+                                    val succeeded = detail.endsWith("completed") ||
+                                        detail.contains("verified", ignoreCase = true) ||
+                                        detail.contains("returned: Success")
+                                    val failed = detail.contains("failed", ignoreCase = true) ||
+                                        detail.contains("cancelled", ignoreCase = true)
+                                    Row(modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Icon(
+                                            when {
+                                                failed -> Icons.Rounded.ErrorOutline
+                                                succeeded -> Icons.Rounded.CheckCircle
+                                                detail.contains("starting") || detail.contains("transferring") ->
+                                                    Icons.Rounded.HourglassTop
+                                                else -> Icons.Rounded.Terminal
+                                            }, contentDescription = null,
+                                            tint = when {
+                                                failed -> MaterialTheme.colorScheme.error
+                                                succeeded -> MaterialTheme.colorScheme.primary
+                                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            }, modifier = Modifier.size(18.dp)
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(detail, style = MaterialTheme.typography.bodySmall)
+                                            if (timestamp.isNotBlank()) {
+                                                Text(timestamp, style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                    }
+                                }
+                                val transfer = state.activitySteps.lastOrNull {
+                                    it.contains("pm install-write:") && it.contains("% transferred")
+                                }
+                                val transferPercent = transfer?.let {
+                                    Regex("""(\d+)% transferred""").find(it)?.groupValues?.get(1)?.toIntOrNull()
                                 }
                                 if (state.phase == ApkInstallUiState.Phase.INSTALLING) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp),
-                                        strokeWidth = 2.dp)
+                                    if (transferPercent != null) {
+                                        LinearProgressIndicator(
+                                            progress = { transferPercent.coerceIn(0, 100) / 100f },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Text("APK transfer $transferPercent% · package commit is separate",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    } else {
+                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                        Text("Waiting for installation stage",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
                         }
