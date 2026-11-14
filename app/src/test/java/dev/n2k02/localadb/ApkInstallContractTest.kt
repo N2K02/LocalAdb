@@ -46,7 +46,8 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("model.abandon()"))
         assertFalse(activity.contains("if (model.state.value.phase == ApkInstallUiState.Phase.INSTALLING) return"))
         assertFalse(activity.contains("MainActivity::class.java"))
-        assertFalse(activity.contains("getLaunchIntentForPackage"))
+        assertTrue(activity.contains("state.packageName != packageName"))
+        assertTrue(activity.contains("getLaunchIntentForPackage(state.packageName)"))
     }
 
     @Test fun eachApkSessionUsesUniqueConstrainedUri() {
@@ -172,6 +173,8 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("Show less"))
         assertTrue(activity.contains("state.phase == ApkInstallUiState.Phase.RESULT && showMore"))
         assertTrue(activity.contains("Successfully installed"))
+        assertTrue(activity.contains("Open app"))
+        assertTrue(activity.contains("Done"))
         assertTrue(activity.contains("dismissOnClickOutside = false"))
         assertTrue(activity.contains("dismissOnBackPress = true"))
         assertTrue(activity.contains("if (showMore) showMore = false"))
