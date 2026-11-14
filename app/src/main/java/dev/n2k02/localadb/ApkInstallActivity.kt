@@ -190,8 +190,13 @@ class ApkInstallActivity : ComponentActivity() {
         // Remove both the dialog dim layer and any dim inherited from its window.
         Dialog(
             onDismissRequest = {
-                if (showMore) showMore = false
-                else if (!working && !closing.value) close()
+                if (showMore) {
+                    showMore = false
+                    appLog.append("APK popup: Back collapsed details")
+                } else if (!working && !closing.value) {
+                    appLog.append("APK popup: Back dismissed installer")
+                    close()
+                }
             },
             properties = DialogProperties(
                 usePlatformDefaultWidth = false,
@@ -431,7 +436,11 @@ class ApkInstallActivity : ComponentActivity() {
                     }
                     if (state.phase == ApkInstallUiState.Phase.RESULT) {
                         TextButton(
-                            onClick = { showMore = !showMore },
+                            onClick = {
+                                showMore = !showMore
+                                appLog.append("APK popup: details " +
+                                    if (showMore) "expanded" else "collapsed")
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(if (showMore) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
@@ -558,12 +567,14 @@ class ApkInstallActivity : ComponentActivity() {
     private fun closeInstaller() {
         if (closing.value) return
         closing.value = true
+        appLog.append("APK popup: closing requested")
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) { model.abandon() }
             } catch (failure: Exception) {
                 appLog.append("APK installer close: cleanup failed: ${failure.javaClass.simpleName}")
             } finally {
+                appLog.append("APK popup: close finished")
                 if (isTaskRoot) finishAndRemoveTask() else finish()
             }
         }
