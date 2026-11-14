@@ -169,12 +169,12 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
 
     fun stagedUri() = ApkInstallProvider.uri(app, session)
 
-    fun installing() {
+    fun installing(native: Boolean = false) {
         if (state.value.phase != ApkInstallUiState.Phase.READY &&
             state.value.phase != ApkInstallUiState.Phase.PERMISSION) return
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.INSTALLING,
             message = "", isError = false, outcome = ApkInstallUiState.Outcome.NONE,
-            activitySteps = listOf("Starting ADB installation service"))
+            activitySteps = listOf(if (native) "Opening Android package installer" else "Starting ADB installation service"))
     }
 
     fun permissionRequired() {
@@ -199,6 +199,12 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
 
     fun complete(resultSuccess: Boolean, cancelled: Boolean, requestedInstaller: String? = null) {
         val verified = installed()
+        val completedStep = when {
+            cancelled -> "Android installation cancelled"
+            resultSuccess && verified -> "Native package installation verified"
+            resultSuccess -> "Native installer returned success; verification pending"
+            else -> "Native installer failed or returned no success"
+        }
         val text = ApkInstallPolicy.result(resultSuccess, verified, cancelled)
         val sourceDetails = if (resultSuccess && verified) {
             DirectInstallAttribution.sourceDetails(requestedInstaller,
@@ -211,7 +217,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             else -> ApkInstallUiState.Outcome.FAILED
         }
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT,
-            message = text, isError = outcome == ApkInstallUiState.Outcome.FAILED,
+            message = text, activitySteps = (state.value.activitySteps + completedStep).takeLast(6),
+            isError = outcome == ApkInstallUiState.Outcome.FAILED,
             sourceDetails = sourceDetails, outcome = outcome)
         appLog.append("APK installer: $text; " + sourceDetails.replace('\n', ' ').take(250))
         pendingCleanup = true
