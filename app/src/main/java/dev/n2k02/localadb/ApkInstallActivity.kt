@@ -504,7 +504,11 @@ class ApkInstallActivity : ComponentActivity() {
                                 if (closing.value) {
                                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                     Text("Closing…")
-                                } else Text("Close")
+                                } else Text(
+                                    if (state.phase == ApkInstallUiState.Phase.RESULT &&
+                                        state.outcome == ApkInstallUiState.Outcome.SUCCESS) "Done"
+                                    else "Close"
+                                )
                             }
                         ApkInstallUiState.Phase.INSTALLING ->
                             TextButton(onClick = close) { Text("Close · continue in background") }
