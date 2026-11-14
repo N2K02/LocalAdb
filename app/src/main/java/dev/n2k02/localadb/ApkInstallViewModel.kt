@@ -18,6 +18,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 internal data class ApkInstallUiState(
     val loading: Boolean = true,
@@ -149,9 +152,12 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         }
     }
 
+    private fun timedStep(stage: String): String =
+        SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date()) + "  " + stage
+
     fun appendInstallStage(stage: String) {
         if (state.value.phase != ApkInstallUiState.Phase.INSTALLING) return
-        state.value = state.value.copy(activitySteps = (state.value.activitySteps + stage).takeLast(6))
+        state.value = state.value.copy(activitySteps = (state.value.activitySteps + timedStep(stage)).takeLast(8))
     }
 
     /** Foreground service owns installation and staged APK cleanup after start. */
@@ -161,7 +167,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             phase = ApkInstallUiState.Phase.RESULT,
             outcome = if (success) ApkInstallUiState.Outcome.SUCCESS else ApkInstallUiState.Outcome.FAILED,
             message = message,
-            activitySteps = (state.value.activitySteps + if (success) "Installation verified" else message.take(180)).takeLast(6),
+            activitySteps = (state.value.activitySteps + timedStep(if (success) "Installation verified" else message.take(180))).takeLast(8),
             isError = !success
         )
         pendingCleanup = true
@@ -174,7 +180,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             state.value.phase != ApkInstallUiState.Phase.PERMISSION) return
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.INSTALLING,
             message = "", isError = false, outcome = ApkInstallUiState.Outcome.NONE,
-            activitySteps = listOf(if (native) "Opening Android package installer" else "Starting ADB installation service"))
+            activitySteps = listOf(timedStep(if (native) "Opening Android package installer" else "Starting ADB installation service")))
     }
 
     fun permissionRequired() {
@@ -217,8 +223,8 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             else -> ApkInstallUiState.Outcome.FAILED
         }
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT,
-            message = text, activitySteps = (state.value.activitySteps + completedStep +
-                if (outcome == ApkInstallUiState.Outcome.FAILED) listOf(text.take(180)) else emptyList()).takeLast(6),
+            message = text, activitySteps = (state.value.activitySteps + timedStep(completedStep) +
+                if (outcome == ApkInstallUiState.Outcome.FAILED) listOf(timedStep(text.take(180))) else emptyList()).takeLast(8),
             isError = outcome == ApkInstallUiState.Outcome.FAILED,
             sourceDetails = sourceDetails, outcome = outcome)
         appLog.append("APK installer: $text; " + sourceDetails.replace('\n', ' ').take(250))
