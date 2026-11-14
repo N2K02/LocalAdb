@@ -3,14 +3,10 @@ package dev.n2k02.localadb
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
-import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
-import android.os.Process
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,16 +51,11 @@ class ApkInstallForegroundService : Service() {
     }
 
     private fun notification(title: String, message: String, ongoing: Boolean): Notification {
-        val launch = Intent(this, MainActivity::class.java)
-        val pending = PendingIntent.getActivity(
-            this, 0, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_localadb)
             .setContentTitle(title)
             .setContentText(message.take(120))
             .setStyle(Notification.BigTextStyle().bigText(message.take(400)))
-            .setContentIntent(pending)
             .setOnlyAlertOnce(ongoing)
             .setOngoing(ongoing)
             .setAutoCancel(!ongoing)
@@ -73,10 +64,11 @@ class ApkInstallForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action != ACTION_INSTALL || !busy.compareAndSet(false, true)) {
+        if (intent?.action != ACTION_INSTALL) {
             stopSelfResult(startId)
             return START_NOT_STICKY
         }
+        if (!busy.compareAndSet(false, true)) return START_NOT_STICKY
         val session = intent.getStringExtra(EXTRA_SESSION).orEmpty()
         val pkg = intent.getStringExtra(EXTRA_PACKAGE).orEmpty()
         val label = intent.getStringExtra(EXTRA_NAME).orEmpty().ifBlank { pkg }
