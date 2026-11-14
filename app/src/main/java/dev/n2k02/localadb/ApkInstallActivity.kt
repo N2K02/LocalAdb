@@ -95,7 +95,7 @@ class ApkInstallActivity : ComponentActivity() {
         var playRecord by rememberSaveable {
             mutableStateOf(DirectInstallAttribution.enabled(this@ApkInstallActivity))
         }
-        val close = { model.abandon(); finish() }
+        val close = { closeInstaller() }
         Dialog(
             onDismissRequest = { if (!working) close() },
             properties = DialogProperties(
@@ -332,6 +332,13 @@ class ApkInstallActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Dismiss only the standalone installer; never navigate to LocalADB's main activity. */
+    private fun closeInstaller() {
+        if (model.state.value.phase == ApkInstallUiState.Phase.INSTALLING) return
+        model.abandon()
+        if (isTaskRoot) finishAndRemoveTask() else finish()
     }
 
     private data class InstallerOutcomeBadge(
