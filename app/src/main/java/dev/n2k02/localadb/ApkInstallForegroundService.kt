@@ -115,8 +115,10 @@ class ApkInstallForegroundService : Service() {
                     val file = ApkInstallProvider.file(applicationContext, session)
                     reportStage(session, "Validating APK compatibility and signature")
                     AndroidAutoPackageInstaller.validateInstallCompatibility(applicationContext, file)
-                    reportStage(session, "ADB: pm install-create → install-write → install-commit")
-                    AndroidAutoPackageInstaller.installDirect(applicationContext, file)
+                    reportStage(session, "Connecting privileged ADB package manager")
+                    AndroidAutoPackageInstaller.installDirect(applicationContext, file) { step ->
+                        reportStage(session, step)
+                    }
                 }
                 reportStage(session, "ADB package manager returned: $result")
                 check(result == "Success") { "Package manager: $result" }
