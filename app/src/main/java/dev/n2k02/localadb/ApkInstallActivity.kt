@@ -41,6 +41,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import android.view.WindowManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -158,6 +162,7 @@ class ApkInstallActivity : ComponentActivity() {
             mutableStateOf(DirectInstallAttribution.enabled(this@ApkInstallActivity))
         }
         val close = { closeInstaller() }
+        // Remove both the dialog dim layer and any dim inherited from its window.
         Dialog(
             onDismissRequest = { if (!working) close() },
             properties = DialogProperties(
@@ -166,6 +171,11 @@ class ApkInstallActivity : ComponentActivity() {
                 dismissOnClickOutside = !working
             )
         ) {
+            val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+            SideEffect {
+                window?.setDimAmount(0f)
+                window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            }
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.96f)
