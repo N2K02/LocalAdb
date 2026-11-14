@@ -7,6 +7,7 @@
     <!-- The external APK dialog floats over the caller rather than an opaque LocalADB screen. -->
     <style name="Theme.LocalAdb.ApkInstaller" parent="Theme.LocalAdb">
         <item name="android:windowIsTranslucent">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionModeOverlay">true</item>
