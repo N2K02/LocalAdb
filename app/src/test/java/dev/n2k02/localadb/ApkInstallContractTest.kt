@@ -17,6 +17,21 @@ class ApkInstallContractTest {
         assertTrue(xml.contains("android:exported=\"false\""))
     }
 
+    @Test fun externalInstallerIsTaskIsolatedAndClosingNeverOpensHome() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        val installer = manifest.substringAfter("<activity android:name=\".ApkInstallActivity\"")
+            .substringBefore("</activity>")
+        assertTrue(installer.contains("android:taskAffinity=\"\""))
+        assertTrue(installer.contains("android:documentLaunchMode=\"always\""))
+        assertTrue(installer.contains("android:excludeFromRecents=\"true\""))
+        val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        assertTrue(activity.contains("val close = { closeInstaller() }"))
+        assertTrue(activity.contains("if (isTaskRoot) finishAndRemoveTask() else finish()"))
+        assertTrue(activity.contains("if (model.state.value.phase == ApkInstallUiState.Phase.INSTALLING) return"))
+        assertFalse(activity.contains("MainActivity::class.java"))
+        assertFalse(activity.contains("getLaunchIntentForPackage"))
+    }
+
     @Test fun eachApkSessionUsesUniqueConstrainedUri() {
         val provider = File("src/main/java/dev/n2k02/localadb/ApkInstallProvider.kt").readText()
         val vm = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
