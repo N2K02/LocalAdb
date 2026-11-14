@@ -74,7 +74,7 @@ class ApkInstallForegroundService : Service() {
 
     private fun notification(title: String, message: String, ongoing: Boolean): Notification {
         return Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_localadb)
+            .setSmallIcon(R.drawable.ic_localadb_notification)
             .setContentTitle(title)
             .setContentText(message.take(120))
             .setStyle(Notification.BigTextStyle().bigText(message.take(400)))
