@@ -132,31 +132,32 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             return
         }
         installing()
-        viewModelScope.launch {
-            try {
-                appLog.append("APK installer: streaming APK to ADB package manager")
-                val requestedInstaller = DirectInstallAttribution.requestedInstaller(app)
-                val result = withContext(Dispatchers.IO) {
-                    val staged = ApkInstallProvider.file(app, session)
-                    AndroidAutoPackageInstaller.validateInstallCompatibility(app, staged)
-                    AndroidAutoPackageInstaller.installDirect(app, staged)
-                }
-                check(result == "Success") { "Package manager: $result" }
-                if (installed()) {
-                    complete(resultSuccess = true, cancelled = false,
-                        requestedInstaller = requestedInstaller)
-                } else {
-                    resetReady("ADB returned success, but the installed package could not be verified.", error = true)
-                    appLog.append("APK installer: ADB result unverified")
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                appLog.append("APK installer: ADB install failed (${failure.javaClass.simpleName}): " +
-                    (failure.message ?: "unknown").take(220))
-                resetReady("ADB installation failed: ${failure.message ?: "unknown error"}. Try Native install.", error = true)
-            }
+        val request = Intent(app, ApkInstallForegroundService::class.java).apply {
+            action = ApkInstallForegroundService.ACTION_INSTALL
+            putExtra(ApkInstallForegroundService.EXTRA_SESSION, session)
+            putExtra(ApkInstallForegroundService.EXTRA_PACKAGE, state.value.packageName)
+            putExtra(ApkInstallForegroundService.EXTRA_NAME, state.value.name)
+            priorVersion?.let { putExtra(ApkInstallForegroundService.EXTRA_OLD_VERSION, it) }
+            priorUpdate?.let { putExtra(ApkInstallForegroundService.EXTRA_OLD_UPDATE, it) }
         }
+        try {
+            app.startForegroundService(request)
+            appLog.append("APK installer: foreground ADB install started")
+        } catch (failure: Exception) {
+            resetReady("Could not start background installer: ${failure.message}", error = true)
+        }
+    }
+
+    /** Foreground service owns installation and staged APK cleanup after start. */
+    fun directInstallResult(success: Boolean, message: String) {
+        if (state.value.phase != ApkInstallUiState.Phase.INSTALLING) return
+        state.value = state.value.copy(
+            phase = ApkInstallUiState.Phase.RESULT,
+            outcome = if (success) ApkInstallUiState.Outcome.SUCCESS else ApkInstallUiState.Outcome.FAILED,
+            message = message,
+            isError = !success
+        )
+        pendingCleanup = true
     }
 
     fun stagedUri() = ApkInstallProvider.uri(app, session)
