@@ -327,7 +327,7 @@ class ApkInstallActivity : ComponentActivity() {
                         }
                     }
                     if (state.message.isNotBlank() &&
-                        (state.isError || state.phase == ApkInstallUiState.Phase.ERROR ||
+                        (state.phase == ApkInstallUiState.Phase.ERROR ||
                          state.phase == ApkInstallUiState.Phase.READY)) {
                         if (state.isError || state.phase == ApkInstallUiState.Phase.ERROR) {
                             Surface(
@@ -354,20 +354,6 @@ class ApkInstallActivity : ComponentActivity() {
                             Text(state.message,
                                 modifier = Modifier.fillMaxWidth(),
                                 style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                    if (state.sourceDetails.isNotBlank()) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.large,
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest
-                        ) {
-                            Text(
-                                state.sourceDetails,
-                                modifier = Modifier.padding(12.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
                     when (state.phase) {
