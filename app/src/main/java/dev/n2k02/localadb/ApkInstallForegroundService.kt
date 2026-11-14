@@ -25,6 +25,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class ApkInstallForegroundService : Service() {
     companion object {
         const val ACTION_INSTALL = "dev.n2k02.localadb.action.INSTALL_APK"
+        const val ACTION_STAGE = "dev.n2k02.localadb.action.INSTALL_STAGE"
+        const val EXTRA_STAGE = "stage"
         const val ACTION_RESULT = "dev.n2k02.localadb.action.INSTALL_RESULT"
         const val EXTRA_SESSION = "session"
         const val EXTRA_PACKAGE = "installed_package"
@@ -62,6 +64,12 @@ class ApkInstallForegroundService : Service() {
         val channel = notifications.getNotificationChannel(CHANNEL)
         if (channel?.importance == NotificationManager.IMPORTANCE_NONE) return "APK channel blocked"
         return "enabled"
+    }
+
+    private fun reportStage(session: String, stage: String) {
+        appLog.append("APK installer stage: $stage")
+        sendBroadcast(Intent(ACTION_STAGE).setPackage(packageName)
+            .putExtra(EXTRA_SESSION, session).putExtra(EXTRA_STAGE, stage))
     }
 
     private fun notification(title: String, message: String, ongoing: Boolean): Notification {
@@ -105,10 +113,14 @@ class ApkInstallForegroundService : Service() {
             try {
                 val result = withContext(Dispatchers.IO) {
                     val file = ApkInstallProvider.file(applicationContext, session)
+                    reportStage(session, "Validating APK compatibility and signature")
                     AndroidAutoPackageInstaller.validateInstallCompatibility(applicationContext, file)
+                    reportStage(session, "ADB: pm install-create → install-write → install-commit")
                     AndroidAutoPackageInstaller.installDirect(applicationContext, file)
                 }
+                reportStage(session, "ADB package manager returned: $result")
                 check(result == "Success") { "Package manager: $result" }
+                reportStage(session, "Verifying installed package version")
                 val installed = withContext(Dispatchers.IO) {
                     val current = packageManager.getPackageInfo(pkg, 0)
                     val code = if (Build.VERSION.SDK_INT >= 28) current.longVersionCode else {
