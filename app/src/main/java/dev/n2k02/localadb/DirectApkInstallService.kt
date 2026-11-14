@@ -21,7 +21,8 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
     override fun getServiceUid(): Int = Process.myUid()
 
     override fun installApk(
-        apk: ParcelFileDescriptor?, length: Long, installerPackageName: String?
+        apk: ParcelFileDescriptor?, length: Long, installerPackageName: String?,
+        callback: IInstallProgressCallback?
     ): String {
         check(Process.myUid() == Process.SHELL_UID) { "Direct install requires ADB shell UID" }
         requireNotNull(apk) { "APK descriptor missing" }
@@ -32,14 +33,20 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
         val createArgs = DirectInstallAttribution.sessionCreateArgs(
             installerPackageName?.ifBlank { null }
         )
+        fun stage(value: String) {
+            runCatching { callback?.onStage(value) }
+            Log.i(TAG, value)
+        }
         var session: String? = null
         try {
+            stage("pm install-create: starting")
             val created = runCommand(createArgs)
             val id = Regex("""\[(\d+)\]""").find(created)?.groupValues?.get(1)
                 ?: error("Cannot determine package install session: ${created.take(200)}")
             session = id
-            Log.i(TAG, "Created install session")
+            stage("pm install-create: completed")
 
+            stage("pm install-write: transferring APK")
             val process = ProcessBuilder(
                 "/system/bin/pm", "install-write", "-S", length.toString(),
                 id, "base.apk", "-"
@@ -47,6 +54,7 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
             try {
                 var written = 0L
                 val input = FileInputStream(apk.fileDescriptor)
+                var lastProgress = -1
                 process.outputStream.use { output ->
                     val buffer = ByteArray(64 * 1024)
                     while (written < length) {
@@ -55,6 +63,11 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
                         check(count > 0) { "APK stream ended early" }
                         output.write(buffer, 0, count)
                         written += count
+                        val percent = ((written * 100L) / length).toInt()
+                        if (percent / 10 > lastProgress / 10) {
+                            lastProgress = percent
+                            stage("pm install-write: $percent% transferred")
+                        }
                     }
                     output.flush()
                 }
@@ -65,18 +78,19 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
             } finally {
                 if (process.isAlive) process.destroyForcibly()
             }
-            Log.i(TAG, "APK transfer completed")
+            stage("pm install-write: completed")
+            stage("pm install-commit: starting")
             val outcome = runCommand(listOf("install-commit", id))
             check(outcome.contains("Success", ignoreCase = true)) {
                 "Package manager: ${outcome.take(300)}"
             }
-            Log.i(TAG, "Install session committed")
+            stage("pm install-commit: completed")
             session = null
             return "Success"
         } finally {
             session?.let { id ->
                 runCatching { runCommand(listOf("install-abandon", id)) }
-                Log.w(TAG, "Install session abandoned after failure")
+                stage("pm install-abandon: failed session cleanup")
             }
             apk.close()
         }
