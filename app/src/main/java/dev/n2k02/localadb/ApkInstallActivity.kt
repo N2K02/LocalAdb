@@ -336,9 +336,35 @@ class ApkInstallActivity : ComponentActivity() {
                                     Text(state.packageName,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("Version ${state.version.ifBlank { "Unknown" }}",
+                                    Text(
+                                        "Installed: " + when {
+                                            state.installedVersionUnknown -> "Unavailable"
+                                            state.installedVersionCode == null -> "Not installed"
+                                            !state.installedVersion.isNullOrBlank() -> state.installedVersion
+                                            else -> "Code ${state.installedVersionCode}"
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        "APK: " + state.version.ifBlank {
+                                            state.targetVersionCode?.let { "Code $it" } ?: "Unknown"
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        when {
+                                            state.installedVersionUnknown -> "Current version unavailable"
+                                            state.installedVersionCode == null -> "New installation"
+                                            state.targetVersionCode == null -> "Version comparison unavailable"
+                                            state.targetVersionCode > state.installedVersionCode -> "Update"
+                                            state.targetVersionCode < state.installedVersionCode -> "Downgrade"
+                                            else -> "Reinstall / same version code"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                     Text("${"%.1f".format(state.size / 1048576.0)} MB",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
