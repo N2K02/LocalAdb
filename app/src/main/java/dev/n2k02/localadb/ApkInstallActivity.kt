@@ -53,6 +53,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
@@ -404,6 +405,16 @@ class ApkInstallActivity : ComponentActivity() {
                                     Text(status, style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary)
                                 }
+                                val logScrollState = rememberScrollState()
+                                LaunchedEffect(state.activitySteps.size) {
+                                    logScrollState.animateScrollTo(logScrollState.maxValue)
+                                }
+                                Column(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .heightIn(max = 240.dp)
+                                        .verticalScroll(logScrollState),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                 state.activitySteps.forEach { step ->
                                     val detail = step.substringAfter("  ", step)
                                     val timestamp = step.substringBefore("  ", "")
@@ -437,6 +448,7 @@ class ApkInstallActivity : ComponentActivity() {
                                             }
                                         }
                                     }
+                                }
                                 }
                                 val transfer = state.activitySteps.lastOrNull {
                                     it.contains("pm install-write:") && it.contains("% transferred")
