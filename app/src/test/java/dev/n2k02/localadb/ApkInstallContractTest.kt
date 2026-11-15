@@ -112,12 +112,31 @@ class ApkInstallContractTest {
         assertTrue(caller.contains("DirectInstallAttribution.readBack(app, selected.packageName)"))
         assertTrue(caller.contains("attributionStatus = verdict"))
         assertTrue(File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText().contains("DirectInstallAttribution.readBack(applicationContext, pkg)"))
-        assertTrue(ui.contains("Google Play as installer of record"))
-        assertTrue(ui.contains("DirectInstallAttribution.setEnabled("))
+        assertFalse(ui.contains("Google Play as installer of record"))
+        assertFalse(ui.contains("DirectInstallAttribution.setEnabled("))
+        assertTrue(File("src/main/java/dev/n2k02/localadb/DirectInstallAttribution.kt").readText().contains("fun enabled(context: Context): Boolean = playInstalled(context)"))
         assertTrue(ui.contains("Live activity"))
         assertTrue(aidl.contains("String installerPackageName"))
         assertTrue(ui.contains("Native install"))
         assertTrue(caller.contains("internal suspend fun startWithLocalHelper("))
+    }
+
+    @Test fun versionComparisonDisplaysCurrentAndTargetWithSafeFallbacks() {
+        val ui = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val model = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(ui.contains("Installed: "))
+        assertTrue(ui.contains("APK: "))
+        assertTrue(ui.contains("New installation"))
+        assertTrue(ui.contains("Current version unavailable"))
+        assertTrue(ui.contains("Reinstall / same version code"))
+        assertTrue(ui.contains("Downgrade"))
+        assertTrue(ui.contains("Update"))
+        assertTrue(ui.contains("state.targetVersionCode > state.installedVersionCode"))
+        assertTrue(ui.contains("state.targetVersionCode < state.installedVersionCode"))
+        assertTrue(model.contains("catch (_: PackageManager.NameNotFoundException)"))
+        assertTrue(model.contains("installedVersion = old?.versionName"))
+        assertTrue(model.contains("installedVersionCode = priorVersion"))
+        assertTrue(model.contains("targetVersionCode = versionCode(info)"))
     }
 
     @Test fun composeDialogAndRealActivityResultAreUsed() {
@@ -132,7 +151,12 @@ class ApkInstallContractTest {
         assertTrue(code.contains("::beginAdbInstall"))
         assertTrue(code.contains("MaterialTheme.colorScheme.errorContainer"))
         assertTrue(code.contains("state.isError"))
-        assertTrue(code.contains("APK size:"))
+        assertTrue(code.contains("state.size / 1048576.0"))
+        assertTrue(code.contains("getPackageArchiveInfo(archive.absolutePath, 0)"))
+        assertTrue(code.contains("packageManager.getApplicationIcon(info)"))
+        assertTrue(code.contains("contentDescription = \"Application icon\""))
+        assertFalse(code.contains("Switch(checked = playRecord"))
+        assertFalse(code.contains("Install directly with ADB, or use Native install"))
         assertFalse(code.contains("android.app.AlertDialog"))
     }
 
@@ -163,7 +187,10 @@ class ApkInstallContractTest {
         assertTrue(helper.contains("pm install-create: starting"))
         assertTrue(helper.contains("pm install-write: completed"))
         assertTrue(helper.contains("pm install-commit: completed"))
-        assertTrue(helper.contains("percent% transferred"))
+        assertTrue(helper.contains("pm install-write: 0% transferred"))
+        assertTrue(helper.contains("pm install-write: 100% transferred"))
+        assertFalse(helper.contains("percent / 10"))
+        assertFalse(helper.contains("lastProgress"))
         assertTrue(activity.contains("state.message.isNotBlank()"))
     }
 
@@ -184,6 +211,29 @@ class ApkInstallContractTest {
         assertTrue(activity.contains("showMore = false"))
         assertTrue(activity.contains("APK popup: Back collapsed details"))
         assertFalse(activity.contains("onDismissRequest = { if (!working"))
+    }
+
+    @Test fun installationTimelineRetainsAndScrollsThroughEarlierSteps() {
+        val ui = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val model = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(ui.contains("val logScrollState = rememberScrollState()"))
+        assertTrue(ui.contains(".heightIn(max = 240.dp)"))
+        assertTrue(ui.contains(".verticalScroll(logScrollState)"))
+        assertTrue(ui.contains("state.activitySteps.forEach"))
+        assertTrue(ui.contains("logScrollState.animateScrollTo(logScrollState.maxValue)"))
+        assertTrue(model.contains(".takeLast(250)"))
+        assertFalse(model.contains(".takeLast(8)"))
+    }
+
+    @Test fun backgroundCloseActionUsesMaterialTonalButton() {
+        val ui = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val action = ui.substringAfter("ApkInstallUiState.Phase.INSTALLING ->\n")
+            .substringBefore("else -> Unit")
+        assertTrue(action.contains("FilledTonalButton("))
+        assertTrue(action.contains("enabled = !closing.value"))
+        assertTrue(action.contains("Modifier.fillMaxWidth().heightIn(min = 52.dp)"))
+        assertTrue(action.contains("Close · continue in background"))
+        assertFalse(action.contains("TextButton(onClick = close)"))
     }
 
     @Test fun modernTimelineShowsTimestampedRealProgress() {
@@ -209,6 +259,21 @@ class ApkInstallContractTest {
         assertFalse(icon.contains("M0,0h24v24"))
         assertTrue(service.contains("setSmallIcon(R.drawable.ic_localadb_notification)"))
         assertFalse(service.contains("setSmallIcon(R.drawable.ic_localadb)"))
+    }
+
+    @Test fun foregroundNotificationTracksEachLiveInstallStageAfterPopupCloses() {
+        val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
+        val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        assertTrue(service.contains("notifications.notify(ACTIVE_ID, notification("))
+        assertTrue(service.contains("\"Installing \$activeInstallLabel\", stage, true"))
+        assertTrue(service.contains("activeInstallLabel = label"))
+        assertTrue(service.contains("reportStage(session, step)"))
+        assertTrue(service.contains("reportStage(session, \"Verifying installed package version\")"))
+        assertTrue(service.contains("setOnlyAlertOnce(ongoing)"))
+        assertTrue(service.contains("setOngoing(ongoing)"))
+        assertTrue(service.contains("stopForeground(STOP_FOREGROUND_REMOVE)"))
+        assertTrue(service.contains("RESULT_ID, notification("))
+        assertTrue(activity.contains("Close · continue in background"))
     }
 
     @Test fun blockedNotificationStateIsExplainedAndLogged() {

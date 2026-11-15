@@ -5,14 +5,11 @@ import android.content.pm.PackageManager
 import android.os.Build
 
 /**
- * Optional installer-of-record preference for direct, shell-initiated APK installs.
+ * Default installer-of-record policy for direct, shell-initiated APK installs.
  * The recorded installing package is NOT proof of Google Play initiation.
  */
 internal object DirectInstallAttribution {
     const val PLAY_PACKAGE = "com.android.vending"
-    private const val PREF_FILE = "direct_apk_installer"
-    private const val PREF_PLAY_RECORD = "play_installer_of_record"
-
     data class Source(
         val available: Boolean,
         val initiating: String? = null,
@@ -20,14 +17,9 @@ internal object DirectInstallAttribution {
         val failure: String? = null,
     )
 
-    fun enabled(context: Context): Boolean =
-        context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-            .getBoolean(PREF_PLAY_RECORD, false)
-
-    fun setEnabled(context: Context, enabled: Boolean) {
-        context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
-            .edit().putBoolean(PREF_PLAY_RECORD, enabled).apply()
-    }
+    // No user-facing switch: use Play attribution when Play is available.
+    // This only sets the installer-of-record, never claims genuine Play initiation.
+    fun enabled(context: Context): Boolean = playInstalled(context)
 
     fun playInstalled(context: Context): Boolean = try {
         @Suppress("DEPRECATION")
@@ -47,10 +39,7 @@ internal object DirectInstallAttribution {
     /** Pure policy, shared by both direct-install entry points. */
     fun installerOption(preferPlay: Boolean, playInstalled: Boolean): String? {
         if (!preferPlay) return null
-        check(playInstalled) {
-            "Google Play is not installed. Disable Play installer-of-record or use Native install."
-        }
-        return PLAY_PACKAGE
+        return if (playInstalled) PLAY_PACKAGE else null
     }
 
     /** Fixed shell arguments; never interpolate installer names into a command string. */

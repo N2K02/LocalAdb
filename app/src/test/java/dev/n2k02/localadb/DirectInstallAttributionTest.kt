@@ -10,14 +10,12 @@ import org.junit.Test
 class DirectInstallAttributionTest {
     private val policy = DirectInstallAttribution
 
-    @Test fun playAttributionIsOptInAndMissingPlayFailsExplicitly() {
+    @Test fun playAttributionDefaultsToAvailablePlayAndFallsBackWhenAbsent() {
         assertNull(policy.installerOption(preferPlay = false, playInstalled = true))
         assertNull(policy.installerOption(preferPlay = false, playInstalled = false))
         assertEquals(policy.PLAY_PACKAGE,
             policy.installerOption(preferPlay = true, playInstalled = true))
-        assertThrows(IllegalStateException::class.java) {
-            policy.installerOption(preferPlay = true, playInstalled = false)
-        }
+        assertNull(policy.installerOption(preferPlay = true, playInstalled = false))
     }
 
     @Test fun shellInstallerArgumentsAreRestrictedToPlayOnly() {

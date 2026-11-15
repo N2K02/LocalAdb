@@ -34,6 +34,10 @@ internal data class ApkInstallUiState(
     val activitySteps: List<String> = emptyList(),
     val outcome: Outcome = Outcome.NONE,
     val phase: Phase = Phase.STAGING,
+    val installedVersion: String? = null,
+    val installedVersionCode: Long? = null,
+    val targetVersionCode: Long? = null,
+    val installedVersionUnknown: Boolean = false,
 ) {
     enum class Phase { STAGING, READY, PERMISSION, INSTALLING, RESULT, ERROR }
     enum class Outcome { NONE, SUCCESS, FAILED, CANCELLED, UNVERIFIED }
@@ -90,9 +94,15 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
                         partial.delete()
                     }
                 }
-                val old = runCatching {
+                var installedVersionUnknown = false
+                val old = try {
                     app.packageManager.getPackageInfo(info.packageName, 0)
-                }.getOrNull()
+                } catch (_: PackageManager.NameNotFoundException) {
+                    null
+                } catch (_: Exception) {
+                    installedVersionUnknown = true
+                    null
+                }
                 priorVersion = old?.let(::versionCode)
                 priorUpdate = old?.lastUpdateTime
                 val name = info.applicationInfo?.let {
@@ -102,7 +112,11 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
                     runCatching { app.packageManager.getApplicationLabel(it).toString() }.getOrNull()
                 } ?: info.packageName
                 state.value = ApkInstallUiState(false, name, info.packageName,
-                    info.versionName.orEmpty(), bytes, phase = ApkInstallUiState.Phase.READY)
+                    info.versionName.orEmpty(), bytes, phase = ApkInstallUiState.Phase.READY,
+                    installedVersion = old?.versionName,
+                    installedVersionCode = priorVersion,
+                    targetVersionCode = versionCode(info),
+                    installedVersionUnknown = installedVersionUnknown)
                 appLog.append("APK installer: validated ${info.packageName}")
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -157,7 +171,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
 
     fun appendInstallStage(stage: String) {
         if (state.value.phase != ApkInstallUiState.Phase.INSTALLING) return
-        state.value = state.value.copy(activitySteps = (state.value.activitySteps + timedStep(stage)).takeLast(8))
+        state.value = state.value.copy(activitySteps = (state.value.activitySteps + timedStep(stage)).takeLast(250))
     }
 
     /** Foreground service owns installation and staged APK cleanup after start. */
@@ -167,7 +181,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
             phase = ApkInstallUiState.Phase.RESULT,
             outcome = if (success) ApkInstallUiState.Outcome.SUCCESS else ApkInstallUiState.Outcome.FAILED,
             message = message,
-            activitySteps = (state.value.activitySteps + timedStep(if (success) "Installation verified" else message.take(180))).takeLast(8),
+            activitySteps = (state.value.activitySteps + timedStep(if (success) "Installation verified" else message.take(180))).takeLast(250),
             isError = !success
         )
         pendingCleanup = true
@@ -224,7 +238,7 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
         }
         state.value = state.value.copy(phase = ApkInstallUiState.Phase.RESULT,
             message = text, activitySteps = (state.value.activitySteps + timedStep(completedStep) +
-                if (outcome == ApkInstallUiState.Outcome.FAILED) listOf(timedStep(text.take(180))) else emptyList()).takeLast(8),
+                if (outcome == ApkInstallUiState.Outcome.FAILED) listOf(timedStep(text.take(180))) else emptyList()).takeLast(250),
             isError = outcome == ApkInstallUiState.Outcome.FAILED,
             sourceDetails = sourceDetails, outcome = outcome)
         appLog.append("APK installer: $text; " + sourceDetails.replace('\n', ' ').take(250))
