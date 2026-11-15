@@ -40,13 +40,16 @@ import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
@@ -182,9 +185,6 @@ class ApkInstallActivity : ComponentActivity() {
     private fun InstallerDialog(state: ApkInstallUiState) {
         val working = state.phase == ApkInstallUiState.Phase.STAGING
         val ready = state.phase == ApkInstallUiState.Phase.READY
-        var playRecord by rememberSaveable {
-            mutableStateOf(DirectInstallAttribution.enabled(this@ApkInstallActivity))
-        }
         val close = { closeInstaller() }
         var showMore by rememberSaveable(state.phase.name) { mutableStateOf(false) }
         // Remove both the dialog dim layer and any dim inherited from its window.
@@ -288,55 +288,62 @@ class ApkInstallActivity : ComponentActivity() {
                         }
                     }
                     if (state.packageName.isNotBlank()) {
+                        val apkIcon = remember(state.packageName, model.session) {
+                            runCatching {
+                                val archive = ApkInstallProvider.file(this@ApkInstallActivity, model.session)
+                                val parsed = packageManager.getPackageArchiveInfo(archive.absolutePath, 0)
+                                parsed?.applicationInfo?.let { info ->
+                                    info.sourceDir = archive.absolutePath
+                                    info.publicSourceDir = archive.absolutePath
+                                    packageManager.getApplicationIcon(info).toBitmap(64, 64).asImageBitmap()
+                                }
+                            }.getOrNull()
+                        }
                         ElevatedCard(
                             modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.large
                         ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
-                                Text(state.name.ifBlank { state.packageName },
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.SemiBold)
-                                Text(state.packageName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(state.version.ifBlank { "Unknown version" },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    softWrap = true)
-                                Text("APK size: ${"%.1f".format(state.size / 1048576.0)} MB",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Surface(
+                                    shape = MaterialTheme.shapes.medium,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest
+                                ) {
+                                    if (apkIcon != null) {
+                                        Image(
+                                            bitmap = apkIcon,
+                                            contentDescription = "Application icon",
+                                            modifier = Modifier.size(64.dp)
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Rounded.InstallMobile,
+                                            contentDescription = "Application icon unavailable",
+                                            modifier = Modifier.padding(12.dp).size(40.dp)
+                                        )
+                                    }
+                                }
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text(state.name.ifBlank { state.packageName },
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.SemiBold)
+                                    Text(state.packageName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Version ${state.version.ifBlank { "Unknown" }}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary)
+                                    Text("${"%.1f".format(state.size / 1048576.0)} MB",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
-                        }
-                    }
-                    if (ready && !state.isError) {
-                        Text(
-                            "Install directly with ADB, or use Native install for Android confirmation.",
-                            modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                    if (ready) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Google Play as installer of record",
-                                    style = MaterialTheme.typography.labelMedium)
-                                Text("Optional · not genuine Play initiation",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Switch(checked = playRecord, onCheckedChange = {
-                                playRecord = it
-                                DirectInstallAttribution.setEnabled(this@ApkInstallActivity, it)
-                            })
                         }
                     }
                     if (state.phase == ApkInstallUiState.Phase.INSTALLING) {
