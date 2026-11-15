@@ -265,7 +265,7 @@ class ApkInstallContractTest {
         val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
         val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
         assertTrue(service.contains("notifications.notify(ACTIVE_ID, notification("))
-        assertTrue(service.contains("\"Installing $activeInstallLabel\", stage, true"))
+        assertTrue(service.contains("\"Installing \$activeInstallLabel\", stage, true"))
         assertTrue(service.contains("activeInstallLabel = label"))
         assertTrue(service.contains("reportStage(session, step)"))
         assertTrue(service.contains("reportStage(session, \"Verifying installed package version\")"))
