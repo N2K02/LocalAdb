@@ -10,6 +10,13 @@ import android.os.Build
  */
 internal object DirectInstallAttribution {
     const val PLAY_PACKAGE = "com.android.vending"
+    data class Source(
+        val available: Boolean,
+        val initiating: String? = null,
+        val installing: String? = null,
+        val failure: String? = null,
+    )
+
     // No user-facing switch: use Play attribution when Play is available.
     // This only sets the installer-of-record, never claims genuine Play initiation.
     fun enabled(context: Context): Boolean = playInstalled(context)
