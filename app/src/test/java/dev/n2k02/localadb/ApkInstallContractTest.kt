@@ -112,8 +112,9 @@ class ApkInstallContractTest {
         assertTrue(caller.contains("DirectInstallAttribution.readBack(app, selected.packageName)"))
         assertTrue(caller.contains("attributionStatus = verdict"))
         assertTrue(File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText().contains("DirectInstallAttribution.readBack(applicationContext, pkg)"))
-        assertTrue(ui.contains("Google Play as installer of record"))
-        assertTrue(ui.contains("DirectInstallAttribution.setEnabled("))
+        assertFalse(ui.contains("Google Play as installer of record"))
+        assertFalse(ui.contains("DirectInstallAttribution.setEnabled("))
+        assertTrue(File("src/main/java/dev/n2k02/localadb/DirectInstallAttribution.kt").readText().contains("fun enabled(context: Context): Boolean = playInstalled(context)"))
         assertTrue(ui.contains("Live activity"))
         assertTrue(aidl.contains("String installerPackageName"))
         assertTrue(ui.contains("Native install"))
@@ -132,7 +133,12 @@ class ApkInstallContractTest {
         assertTrue(code.contains("::beginAdbInstall"))
         assertTrue(code.contains("MaterialTheme.colorScheme.errorContainer"))
         assertTrue(code.contains("state.isError"))
-        assertTrue(code.contains("APK size:"))
+        assertTrue(code.contains("state.size / 1048576.0"))
+        assertTrue(code.contains("getPackageArchiveInfo(archive.absolutePath, 0)"))
+        assertTrue(code.contains("packageManager.getApplicationIcon(info)"))
+        assertTrue(code.contains("contentDescription = \"Application icon\""))
+        assertFalse(code.contains("Switch(checked = playRecord"))
+        assertFalse(code.contains("Install directly with ADB, or use Native install"))
         assertFalse(code.contains("android.app.AlertDialog"))
     }
 
@@ -163,7 +169,10 @@ class ApkInstallContractTest {
         assertTrue(helper.contains("pm install-create: starting"))
         assertTrue(helper.contains("pm install-write: completed"))
         assertTrue(helper.contains("pm install-commit: completed"))
-        assertTrue(helper.contains("percent% transferred"))
+        assertTrue(helper.contains("pm install-write: 0% transferred"))
+        assertTrue(helper.contains("pm install-write: 100% transferred"))
+        assertFalse(helper.contains("percent / 10"))
+        assertFalse(helper.contains("lastProgress"))
         assertTrue(activity.contains("state.message.isNotBlank()"))
     }
 
