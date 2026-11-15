@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.InstallMobile
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -604,7 +605,20 @@ class ApkInstallActivity : ComponentActivity() {
                             }
                         }
                         ApkInstallUiState.Phase.INSTALLING ->
-                            TextButton(onClick = close) { Text("Close · continue in background") }
+                            FilledTonalButton(
+                                onClick = close,
+                                enabled = !closing.value,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                                shape = MaterialTheme.shapes.extraLarge
+                            ) {
+                                Icon(Icons.Rounded.Close, contentDescription = null,
+                                    modifier = Modifier.size(18.dp))
+                                Text(
+                                    if (closing.value) "Closing…" else "Close · continue in background",
+                                    modifier = Modifier.padding(start = 8.dp),
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
                         else -> Unit
                     }
                 }
