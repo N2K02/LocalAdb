@@ -44,6 +44,7 @@ class ApkInstallForegroundService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val notifications by lazy { getSystemService(NotificationManager::class.java) }
+    @Volatile private var activeInstallLabel: String = "APK"
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -70,6 +71,15 @@ class ApkInstallForegroundService : Service() {
         appLog.append("APK installer stage: $stage")
         sendBroadcast(Intent(ACTION_STAGE).setPackage(packageName)
             .putExtra(EXTRA_SESSION, session).putExtra(EXTRA_STAGE, stage))
+        // Updating ACTIVE_ID keeps the existing foreground notification live even
+        // when the installer dialog is gone. Never invent a transfer percentage.
+        runCatching {
+            notifications.notify(ACTIVE_ID, notification(
+                "Installing $activeInstallLabel", stage, true
+            ))
+        }.onFailure {
+            Log.w("LocalAdbApkInstall", "Stage notification unavailable", it)
+        }
     }
 
     private fun notification(title: String, message: String, ongoing: Boolean): Notification {
@@ -99,6 +109,7 @@ class ApkInstallForegroundService : Service() {
             stopSelfResult(startId)
             return START_NOT_STICKY
         }
+        activeInstallLabel = label
         // startForeground is called immediately, before any potentially blocking APK operations.
         appLog.append("APK notification: foreground start; " + notificationAvailability())
         startForeground(ACTIVE_ID, notification("Installing $label", "Installing via ADB…", true))
