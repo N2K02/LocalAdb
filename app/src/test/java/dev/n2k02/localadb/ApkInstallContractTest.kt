@@ -121,6 +121,24 @@ class ApkInstallContractTest {
         assertTrue(caller.contains("internal suspend fun startWithLocalHelper("))
     }
 
+    @Test fun versionComparisonDisplaysCurrentAndTargetWithSafeFallbacks() {
+        val ui = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val model = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(ui.contains("Installed: "))
+        assertTrue(ui.contains("APK: "))
+        assertTrue(ui.contains("New installation"))
+        assertTrue(ui.contains("Current version unavailable"))
+        assertTrue(ui.contains("Reinstall / same version code"))
+        assertTrue(ui.contains("Downgrade"))
+        assertTrue(ui.contains("Update"))
+        assertTrue(ui.contains("state.targetVersionCode > state.installedVersionCode"))
+        assertTrue(ui.contains("state.targetVersionCode < state.installedVersionCode"))
+        assertTrue(model.contains("catch (_: PackageManager.NameNotFoundException)"))
+        assertTrue(model.contains("installedVersion = old?.versionName"))
+        assertTrue(model.contains("installedVersionCode = priorVersion"))
+        assertTrue(model.contains("targetVersionCode = versionCode(info)"))
+    }
+
     @Test fun composeDialogAndRealActivityResultAreUsed() {
         val code = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
         assertTrue(code.contains("N2K02Theme"))
