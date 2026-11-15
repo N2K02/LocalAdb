@@ -261,6 +261,21 @@ class ApkInstallContractTest {
         assertFalse(service.contains("setSmallIcon(R.drawable.ic_localadb)"))
     }
 
+    @Test fun foregroundNotificationTracksEachLiveInstallStageAfterPopupCloses() {
+        val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
+        val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        assertTrue(service.contains("notifications.notify(ACTIVE_ID, notification("))
+        assertTrue(service.contains("\"Installing $activeInstallLabel\", stage, true"))
+        assertTrue(service.contains("activeInstallLabel = label"))
+        assertTrue(service.contains("reportStage(session, step)"))
+        assertTrue(service.contains("reportStage(session, \"Verifying installed package version\")"))
+        assertTrue(service.contains("setOnlyAlertOnce(ongoing)"))
+        assertTrue(service.contains("setOngoing(ongoing)"))
+        assertTrue(service.contains("stopForeground(STOP_FOREGROUND_REMOVE)"))
+        assertTrue(service.contains("RESULT_ID, notification("))
+        assertTrue(activity.contains("Close · continue in background"))
+    }
+
     @Test fun blockedNotificationStateIsExplainedAndLogged() {
         val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
         val service = File("src/main/java/dev/n2k02/localadb/ApkInstallForegroundService.kt").readText()
