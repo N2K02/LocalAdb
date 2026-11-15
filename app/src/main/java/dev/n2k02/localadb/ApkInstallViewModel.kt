@@ -34,6 +34,10 @@ internal data class ApkInstallUiState(
     val activitySteps: List<String> = emptyList(),
     val outcome: Outcome = Outcome.NONE,
     val phase: Phase = Phase.STAGING,
+    val installedVersion: String? = null,
+    val installedVersionCode: Long? = null,
+    val targetVersionCode: Long? = null,
+    val installedVersionUnknown: Boolean = false,
 ) {
     enum class Phase { STAGING, READY, PERMISSION, INSTALLING, RESULT, ERROR }
     enum class Outcome { NONE, SUCCESS, FAILED, CANCELLED, UNVERIFIED }
@@ -90,9 +94,15 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
                         partial.delete()
                     }
                 }
-                val old = runCatching {
+                var installedVersionUnknown = false
+                val old = try {
                     app.packageManager.getPackageInfo(info.packageName, 0)
-                }.getOrNull()
+                } catch (_: PackageManager.NameNotFoundException) {
+                    null
+                } catch (_: Exception) {
+                    installedVersionUnknown = true
+                    null
+                }
                 priorVersion = old?.let(::versionCode)
                 priorUpdate = old?.lastUpdateTime
                 val name = info.applicationInfo?.let {
@@ -102,7 +112,11 @@ internal class ApkInstallViewModel(application: Application) : AndroidViewModel(
                     runCatching { app.packageManager.getApplicationLabel(it).toString() }.getOrNull()
                 } ?: info.packageName
                 state.value = ApkInstallUiState(false, name, info.packageName,
-                    info.versionName.orEmpty(), bytes, phase = ApkInstallUiState.Phase.READY)
+                    info.versionName.orEmpty(), bytes, phase = ApkInstallUiState.Phase.READY,
+                    installedVersion = old?.versionName,
+                    installedVersionCode = priorVersion,
+                    targetVersionCode = versionCode(info),
+                    installedVersionUnknown = installedVersionUnknown)
                 appLog.append("APK installer: validated ${info.packageName}")
             } catch (cancelled: CancellationException) {
                 throw cancelled
