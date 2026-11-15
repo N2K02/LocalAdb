@@ -40,7 +40,6 @@ internal fun AndroidAutoInstallerCard() {
     val state by AndroidAutoPackageInstaller.state.collectAsState()
     val server by NativeShizukuManager.state.collectAsState()
     var showDetails by rememberSaveable { mutableStateOf(false) }
-    var playRecord by rememberSaveable { mutableStateOf(DirectInstallAttribution.enabled(context)) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             showDetails = false
@@ -111,27 +110,6 @@ internal fun AndroidAutoInstallerCard() {
                     Spacer(Modifier.width(5.dp))
                     Text("Install", maxLines = 1)
                 }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Google Play as installer of record",
-                        style = MaterialTheme.typography.labelMedium)
-                    Text("Optional · not genuine Play initiation",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(
-                    checked = playRecord,
-                    enabled = !state.busy && !state.pending,
-                    onCheckedChange = {
-                        playRecord = it
-                        DirectInstallAttribution.setEnabled(context, it)
-                    }
-                )
             }
             if (state.packageName != null) {
                 Row(
