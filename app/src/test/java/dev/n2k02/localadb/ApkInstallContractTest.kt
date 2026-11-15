@@ -213,6 +213,29 @@ class ApkInstallContractTest {
         assertFalse(activity.contains("onDismissRequest = { if (!working"))
     }
 
+    @Test fun installationTimelineRetainsAndScrollsThroughEarlierSteps() {
+        val ui = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val model = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
+        assertTrue(ui.contains("val logScrollState = rememberScrollState()"))
+        assertTrue(ui.contains(".heightIn(max = 240.dp)"))
+        assertTrue(ui.contains(".verticalScroll(logScrollState)"))
+        assertTrue(ui.contains("state.activitySteps.forEach"))
+        assertTrue(ui.contains("logScrollState.animateScrollTo(logScrollState.maxValue)"))
+        assertTrue(model.contains(".takeLast(250)"))
+        assertFalse(model.contains(".takeLast(8)"))
+    }
+
+    @Test fun backgroundCloseActionUsesMaterialTonalButton() {
+        val ui = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
+        val action = ui.substringAfter("ApkInstallUiState.Phase.INSTALLING ->\n")
+            .substringBefore("else -> Unit")
+        assertTrue(action.contains("FilledTonalButton("))
+        assertTrue(action.contains("enabled = !closing.value"))
+        assertTrue(action.contains("Modifier.fillMaxWidth().heightIn(min = 52.dp)"))
+        assertTrue(action.contains("Close · continue in background"))
+        assertFalse(action.contains("TextButton(onClick = close)"))
+    }
+
     @Test fun modernTimelineShowsTimestampedRealProgress() {
         val activity = File("src/main/java/dev/n2k02/localadb/ApkInstallActivity.kt").readText()
         val model = File("src/main/java/dev/n2k02/localadb/ApkInstallViewModel.kt").readText()
