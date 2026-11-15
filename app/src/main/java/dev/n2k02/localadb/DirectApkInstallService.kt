@@ -46,7 +46,7 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
             session = id
             stage("pm install-create: completed")
 
-            stage("pm install-write: transferring APK")
+            stage("pm install-write: 0% transferred")
             val process = ProcessBuilder(
                 "/system/bin/pm", "install-write", "-S", length.toString(),
                 id, "base.apk", "-"
@@ -54,7 +54,6 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
             try {
                 var written = 0L
                 val input = FileInputStream(apk.fileDescriptor)
-                var lastProgress = -1
                 process.outputStream.use { output ->
                     val buffer = ByteArray(64 * 1024)
                     while (written < length) {
@@ -63,11 +62,7 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
                         check(count > 0) { "APK stream ended early" }
                         output.write(buffer, 0, count)
                         written += count
-                        val percent = ((written * 100L) / length).toInt()
-                        if (percent / 10 > lastProgress / 10) {
-                            lastProgress = percent
-                            stage("pm install-write: $percent% transferred")
-                        }
+
                     }
                     output.flush()
                 }
@@ -78,6 +73,7 @@ class DirectApkInstallService : IDirectApkInstallService.Stub() {
             } finally {
                 if (process.isAlive) process.destroyForcibly()
             }
+            stage("pm install-write: 100% transferred")
             stage("pm install-write: completed")
             stage("pm install-commit: starting")
             val outcome = runCommand(listOf("install-commit", id))
