@@ -92,17 +92,13 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(installer.contains("Shizuku.unbindUserService(args, conn, true)"))
     }
 
-    @Test fun aaInstallerHasReadOnlyComparisonAndSystemFirstUi() {
+    @Test fun aaInstallerKeepsSystemAndDirectOptionsWithoutComparisonUi() {
         val card = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoInstallerCard.kt").readText()
-        assertTrue(card.contains("Compare AABrowser / AAYouTube"))
         assertTrue(card.contains("AndroidAutoPackageInstaller::install)"))
         assertTrue(card.contains("AndroidAutoPackageInstaller::installDirectFromHome)"))
-        val diagnostics = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoInstallDiagnostics.kt").readText()
-        assertTrue(diagnostics.contains("com.fcaronte.aabrowser"))
-        assertTrue(diagnostics.contains("com.aayoutube.app"))
-        assertTrue(diagnostics.contains("initiatingPackageName"))
-        assertTrue(diagnostics.contains("installingPackageName"))
-        assertTrue(diagnostics.contains("Android Auto approval"))
+        assertFalse(card.contains("Compare AABrowser / AAYouTube"))
+        assertFalse(card.contains("showComparison"))
+        assertFalse(card.contains("AndroidAutoInstallDiagnostics.summary(context)"))
     }
 
     @Test fun metadataReadbackIsBoundedAndDoesNotUseInstallerSpoofingForApproval() {
