@@ -58,13 +58,13 @@ class CompactHomeInstallerUiTest {
         assertTrue(ui.contains("SelectionContainer"))
     }
 
-    @Test fun shizukuHomeInstallerDefaultsToDirectAndOffersNativeFallback() {
+    @Test fun aaHomeInstallerDefaultsToSystemAndOffersDirectAdb() {
         val ui = source("AndroidAutoInstallerCard.kt")
         val installer = source("AndroidAutoPackageInstaller.kt")
         assertTrue(ui.contains("AndroidAutoPackageInstaller::installDirectFromHome"))
         assertTrue(ui.contains("AndroidAutoPackageInstaller::install"))
         assertTrue(ui.contains("Text(\"Native install\""))
-        assertTrue(ui.contains("Native install opens Android confirmation."))
+        assertTrue(ui.contains("AA install opens Android confirmation; Direct ADB uses Shizuku."))
         assertFalse(ui.contains("Google Play as installer of record"))
         assertFalse(ui.contains("DirectInstallAttribution.setEnabled(context, it)"))
         assertTrue(installer.contains("requestedInstaller = requestedInstaller"))
@@ -78,7 +78,7 @@ class CompactHomeInstallerUiTest {
         assertTrue(installer.contains("Package manager reported success"))
     }
 
-    @Test fun resultBadgeIsSeparateFromAdbReadinessAndNativeActionIsProminent() {
+    @Test fun resultBadgeIsSeparateFromAdbReadinessAndAaActionIsProminent() {
         val ui = source("AndroidAutoInstallerCard.kt")
         val controller = source("AndroidAutoPackageInstaller.kt")
         assertTrue(ui.contains("InstallerResultSummary(state)"))
@@ -89,7 +89,7 @@ class CompactHomeInstallerUiTest {
         assertTrue(ui.contains("FilledTonalButton("))
         assertTrue(ui.contains("onClick = { activity?.let(AndroidAutoPackageInstaller::install) }"))
         assertTrue(ui.contains("Text(\"Native install\", maxLines = 1)"))
-        assertTrue(ui.contains("Text(\"Native install opens Android confirmation.\""))
+        assertTrue(ui.contains("Text(\"AA install opens Android confirmation; Direct ADB uses Shizuku.\""))
         assertFalse(ui.contains("TextButton(\n                enabled = activity != null"))
         assertTrue(controller.contains("enum class ResultStatus"))
         assertTrue(controller.contains("resultStatus = ResultStatus.CANCELLED"))
