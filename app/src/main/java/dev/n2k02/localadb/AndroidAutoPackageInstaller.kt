@@ -308,11 +308,11 @@ internal object AndroidAutoPackageInstaller {
                     else AndroidAutoInstallPolicy.AOSP_INSTALLER
                 // Discover OEM installer handlers, not just Google's/AOSP's package name.
                 // Grants are read-only; PackageManager still owns authorization.
-                val candidates = mutableSetOf(
+                val candidates = mutableSetOf(AndroidAutoInstallPolicy.VENDING)
+                val knownSystemInstallers = setOf(
                     "com.google.android.packageinstaller", "com.android.packageinstaller",
                     "com.samsung.android.packageinstaller", "com.miui.packageinstaller",
-                    "com.coloros.packageinstaller", "com.oplus.packageinstaller",
-                    "com.huawei.appmarket", AndroidAutoInstallPolicy.VENDING
+                    "com.coloros.packageinstaller", "com.oplus.packageinstaller"
                 )
                 val probe = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
@@ -321,11 +321,14 @@ internal object AndroidAutoPackageInstaller {
                 val discovered = activity.packageManager.queryIntentActivities(probe, 0)
                 for (handler in discovered) {
                     val pkg = handler.activityInfo?.packageName ?: continue
-                    // Do not provide privileged APK URIs to arbitrary handlers.
-                    if (handler.activityInfo?.applicationInfo?.flags?.and(
+                    // Grant only actual system/updated-system installer handlers.
+                    val flags = handler.activityInfo?.applicationInfo?.flags ?: 0
+                    val platform = flags and (
                         android.content.pm.ApplicationInfo.FLAG_SYSTEM or
-                            android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
-                    ) != 0) candidates.add(pkg)
+                            android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                    if (platform && (pkg in knownSystemInstallers ||
+                            pkg.contains("packageinstaller", ignoreCase = true)))
+                        candidates.add(pkg)
                 }
                 for (pkg in candidates) {
                     runCatching { activity.grantUriPermission(pkg, uri,
