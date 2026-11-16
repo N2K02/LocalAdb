@@ -114,6 +114,21 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(installer.contains("Android Auto approval is not guaranteed"))
     }
 
+    @Test fun shizukuLaunchFallsBackWithoutRunningDirectPmInstall() {
+        val helper = java.io.File("src/main/java/dev/n2k02/localadb/LocalHelperService.kt").readText()
+        val installer = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
+        assertTrue(helper.contains("val binderResult"))
+        assertTrue(helper.contains("if (binderResult == \"ok\") return binderResult"))
+        assertTrue(helper.contains("ProcessBuilder(\"/system/bin/sh\", \"-c\", command)"))
+        assertTrue(helper.contains("process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)"))
+        assertTrue(helper.contains("AndroidAutoInstallPolicy.shellCommand("))
+        assertFalse(helper.contains("pm install-create"))
+        assertTrue(installer.contains("if (result != \"ok\")"))
+        assertTrue(installer.contains("intent.component = null"))
+        assertTrue(installer.contains("activity.startActivity(intent)"))
+        assertTrue(installer.contains("lastPath = AndroidAutoInstallPolicy.Path.APP"))
+    }
+
     @Test fun quitClearsInstallerSessionBeforeStoppingShizuku() {
         val activity = java.io.File("src/main/java/dev/n2k02/localadb/MainActivity.kt")
             .readText()
