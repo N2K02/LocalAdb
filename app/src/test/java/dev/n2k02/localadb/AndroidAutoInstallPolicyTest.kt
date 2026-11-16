@@ -124,7 +124,9 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(helper.contains("AndroidAutoInstallPolicy.shellCommand("))
         assertFalse(helper.contains("pm install-create"))
         assertTrue(installer.contains("if (result != \"ok\")"))
-        assertTrue(installer.contains("intent.component = null"))
+        assertTrue(installer.contains("intent.component = nativeHandler"))
+        assertTrue(installer.contains("No verified system installer activity"))
+        assertTrue(installer.contains("verifiedHandlers.add(ComponentName(pkg, handler.activityInfo.name))"))
         assertTrue(installer.contains("activity.startActivity(intent)"))
         assertTrue(installer.contains("lastPath = AndroidAutoInstallPolicy.Path.APP"))
     }
