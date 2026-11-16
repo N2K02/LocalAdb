@@ -319,6 +319,7 @@ internal object AndroidAutoPackageInstaller {
                 }
                 @Suppress("DEPRECATION")
                 val discovered = activity.packageManager.queryIntentActivities(probe, 0)
+                val verifiedHandlers = mutableListOf<ComponentName>()
                 for (handler in discovered) {
                     val pkg = handler.activityInfo?.packageName ?: continue
                     // Grant only actual system/updated-system installer handlers.
@@ -326,15 +327,27 @@ internal object AndroidAutoPackageInstaller {
                     val platform = flags and (
                         android.content.pm.ApplicationInfo.FLAG_SYSTEM or
                             android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                    if (platform && (pkg in knownSystemInstallers ||
-                            pkg.contains("packageinstaller", ignoreCase = true)))
+                    if (platform && handler.activityInfo?.exported == true &&
+                        (pkg in knownSystemInstallers ||
+                            pkg.contains("packageinstaller", ignoreCase = true))) {
                         candidates.add(pkg)
+                        verifiedHandlers.add(ComponentName(pkg, handler.activityInfo.name))
+                    }
                 }
                 for (pkg in candidates) {
                     runCatching { activity.grantUriPermission(pkg, uri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 }
-                appLog.append("Native AA install: discovered ${discovered.size} installer handlers")
+                // Never send our own staged APK to LocalAdb's exported APK
+                // handler: that can trigger a recursive self-install/overwrite.
+                val nativeHandler = verifiedHandlers.sortedBy {
+                    when (it.packageName) {
+                        "com.google.android.packageinstaller" -> 0
+                        "com.android.packageinstaller" -> 1
+                        else -> 2
+                    }
+                }.firstOrNull()
+                appLog.append("Native AA install: discovered ${discovered.size} handlers; trusted=${verifiedHandlers.size}")
                 val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -372,14 +385,18 @@ internal object AndroidAutoPackageInstaller {
                                 Uri.parse("package:" + activity.packageName)))
                             return@launch
                         }
-                        intent.component = null
+                        intent.component = nativeHandler
+                            ?: error("No verified system installer activity; refusing self-installer chooser")
                         activity.startActivity(intent)
                         lastPath = AndroidAutoInstallPolicy.Path.APP
                         state.value = state.value.copy(installMethod = "APP",
                             message = "Confirm the Android system installer prompt (fallback).")
                     }
                 } else {
-                    // An implicit system installer allows OEM package handlers.
+                    // Resolve to a verified system/OEM installer. Our exported
+                    // APK receiver must never receive this staged file.
+                    intent.component = nativeHandler
+                        ?: error("No verified system installer activity; refusing self-installer chooser")
                     activity.startActivity(intent)
                 }
                 state.value = state.value.copy(busy = false)
