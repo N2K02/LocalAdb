@@ -13,7 +13,7 @@ internal object AndroidAutoInstallDiagnostics {
 
     fun summary(context: Context): String = buildString {
         appendLine("Android Auto installation comparison")
-        appendLine("Installation-source metadata does not guarantee launcher approval.")
+        appendLine("Installation-source metadata does not guarantee launcher visibility or Android Auto approval.")
         val pm = context.packageManager
         for ((pkg, label) in packages) {
             appendLine()
