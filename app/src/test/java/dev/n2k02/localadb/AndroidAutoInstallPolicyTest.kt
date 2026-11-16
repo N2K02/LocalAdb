@@ -92,6 +92,28 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(installer.contains("Shizuku.unbindUserService(args, conn, true)"))
     }
 
+    @Test fun aaInstallerHasReadOnlyComparisonAndSystemFirstUi() {
+        val card = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoInstallerCard.kt").readText()
+        assertTrue(card.contains("Compare AABrowser / AAYouTube"))
+        assertTrue(card.contains("AndroidAutoPackageInstaller::install)"))
+        assertTrue(card.contains("AndroidAutoPackageInstaller::installDirectFromHome)"))
+        val diagnostics = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoInstallDiagnostics.kt").readText()
+        assertTrue(diagnostics.contains("com.fcaronte.aabrowser"))
+        assertTrue(diagnostics.contains("com.aayoutube.app"))
+        assertTrue(diagnostics.contains("initiatingPackageName"))
+        assertTrue(diagnostics.contains("installingPackageName"))
+        assertTrue(diagnostics.contains("Android Auto approval"))
+    }
+
+    @Test fun metadataReadbackIsBoundedAndDoesNotUseInstallerSpoofingForApproval() {
+        val installer = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
+        assertTrue(installer.contains("listOf(800L, 1200L, 2000L, 3500L)"))
+        assertTrue(installer.contains("verificationGeneration"))
+        assertTrue(installer.contains("queryIntentActivities(probe, 0)"))
+        assertTrue(installer.contains("FLAG_SYSTEM"))
+        assertTrue(installer.contains("Android Auto approval is not guaranteed"))
+    }
+
     @Test fun quitClearsInstallerSessionBeforeStoppingShizuku() {
         val activity = java.io.File("src/main/java/dev/n2k02/localadb/MainActivity.kt")
             .readText()
