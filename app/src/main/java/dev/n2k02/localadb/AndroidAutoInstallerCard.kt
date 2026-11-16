@@ -60,14 +60,14 @@ internal fun AndroidAutoInstallerCard() {
     ModernPanel(Modifier.fillMaxWidth(), DashboardTone.NEUTRAL, compact = true) {
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             ModernSectionHeader(
-                title = "Shizuku package installer",
+                title = "ADB package installer",
                 subtitle = "System installer for car apps · direct ADB optional",
                 icon = Icons.Rounded.Android,
                 tone = DashboardTone.NEUTRAL,
                 status = when {
                     state.pending || state.busy -> "Working"
                     server.serviceReady -> "ADB ready"
-                    else -> "Shizuku offline"
+                    else -> "ADB offline"
                 },
                 statusTone = when {
                     state.pending || state.busy -> DashboardTone.WARN
@@ -142,7 +142,7 @@ internal fun AndroidAutoInstallerCard() {
                         Text("Direct ADB", maxLines = 1)
                     }
                 }
-                Text("AA install opens Android confirmation; Direct ADB uses Shizuku.",
+                Text("AA install opens Android confirmation; Direct ADB uses ADB.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -177,7 +177,7 @@ internal fun AndroidAutoInstallerCard() {
                 if (showDetails) AndroidAutoInstallerDetails(state)
             }
             if (!server.serviceReady) {
-                Text("Start the embedded Shizuku manager for the shell-assisted method.",
+                Text("Start the embedded ADB manager for the shell-assisted method.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -265,7 +265,7 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                 InstallerDetailRow("Method",
                     when (it) {
                         "DIRECT_ADB" -> "ADB shell · direct"
-                        "SHELL" -> "Shizuku · system installer"
+                        "SHELL" -> "ADB · system installer"
                         else -> "System installer"
                     })
             }
