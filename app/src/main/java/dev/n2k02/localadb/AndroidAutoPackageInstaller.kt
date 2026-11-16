@@ -63,6 +63,7 @@ internal object AndroidAutoPackageInstaller {
     private var previousUpdate = 0L
     private var retried = false
     private var lastPath = AndroidAutoInstallPolicy.Path.SHELL
+    private var verificationGeneration = 0
 
     private fun packageInfo(context: Context, name: String): PackageInfo? = try {
         @Suppress("DEPRECATION")
@@ -305,11 +306,32 @@ internal object AndroidAutoPackageInstaller {
                         "com.google.android.packageinstaller", 0) }.isSuccess)
                     AndroidAutoInstallPolicy.GOOGLE_INSTALLER
                     else AndroidAutoInstallPolicy.AOSP_INSTALLER
-                for (pkg in arrayOf("com.google.android.packageinstaller",
-                    "com.android.packageinstaller", AndroidAutoInstallPolicy.VENDING)) {
+                // Discover OEM installer handlers, not just Google's/AOSP's package name.
+                // Grants are read-only; PackageManager still owns authorization.
+                val candidates = mutableSetOf(
+                    "com.google.android.packageinstaller", "com.android.packageinstaller",
+                    "com.samsung.android.packageinstaller", "com.miui.packageinstaller",
+                    "com.coloros.packageinstaller", "com.oplus.packageinstaller",
+                    "com.huawei.appmarket", AndroidAutoInstallPolicy.VENDING
+                )
+                val probe = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                }
+                @Suppress("DEPRECATION")
+                val discovered = activity.packageManager.queryIntentActivities(probe, 0)
+                for (handler in discovered) {
+                    val pkg = handler.activityInfo?.packageName ?: continue
+                    // Do not provide privileged APK URIs to arbitrary handlers.
+                    if (handler.activityInfo?.applicationInfo?.flags?.and(
+                        android.content.pm.ApplicationInfo.FLAG_SYSTEM or
+                            android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
+                    ) != 0) candidates.add(pkg)
+                }
+                for (pkg in candidates) {
                     runCatching { activity.grantUriPermission(pkg, uri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 }
+                appLog.append("Native AA install: discovered ${discovered.size} installer handlers")
                 val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -450,20 +472,28 @@ internal object AndroidAutoPackageInstaller {
     fun onResume(activity: Activity) {
         if (!state.value.pending || !pausedDuringInstall) return
         pausedDuringInstall = false
+        val generation = ++verificationGeneration
         scope.launch {
-            delay(800) // allow PackageManager's recorded source to settle
-            verify(activity)
+            // Package-manager install-source recording is asynchronous on some ROMs.
+            // Bounded readbacks, no second install or source manipulation.
+            for (delayMs in listOf(800L, 1200L, 2000L, 3500L)) {
+                delay(delayMs)
+                if (generation != verificationGeneration || !state.value.pending) return@launch
+                if (verify(activity, allowPending = delayMs != 3500L)) return@launch
+            }
         }
     }
 
-    private fun verify(activity: Activity) {
-        val name = state.value.packageName ?: return
+    /** True once a definitive readback is available; false means retry metadata only. */
+    private fun verify(activity: Activity, allowPending: Boolean = false): Boolean {
+        val name = state.value.packageName ?: return true
         val now = packageInfo(activity, name)
         if (now == null || now.lastUpdateTime <= previousUpdate) {
+            if (allowPending) return false
             state.value = state.value.copy(pending = false, busy = false,
                 resultStatus = ResultStatus.CANCELLED,
                 message = "Installation was cancelled or rejected. No new installation was detected.")
-            return
+            return true
         }
         val initiator: String?
         val installing: String?
@@ -481,8 +511,10 @@ internal object AndroidAutoPackageInstaller {
             state.value = state.value.copy(pending = false, busy = false,
                 resultStatus = ResultStatus.NOT_VERIFIED,
                 message = "Installed, but install-source verification failed: " + failure.message)
-            return
+            return true
         }
+        if (Build.VERSION.SDK_INT >= 30 && (initiator == null || installing == null) && allowPending)
+            return false
         val accepted = AndroidAutoInstallPolicy.accepts(
             initiator, installing, Build.VERSION.SDK_INT)
         if (accepted) {
@@ -492,9 +524,9 @@ internal object AndroidAutoPackageInstaller {
             state.value = state.value.copy(pending = false, success = true,
                 resultStatus = ResultStatus.INSTALLED,
                 initiatingPackage = initiator, installingPackage = installing,
-                message = "Installed with accepted Google Play attribution.",
-                details = "")
-            return
+                message = "Installed with recognized installation-source metadata; Android Auto approval is not guaranteed.",
+                details = "Initiator: ${initiator ?: "unknown"}; installer: ${installing ?: "unknown"}")
+            return true
         }
         if (AndroidAutoInstallPolicy.shouldRetry(true, accepted, retried)) {
             retried = true
@@ -509,14 +541,15 @@ internal object AndroidAutoPackageInstaller {
                     message = "Attribution was rejected; retrying the alternative installer…",
                     details = "")
                 launch(activity, alternate)
-                return
+                return true
             }
         }
         state.value = state.value.copy(pending = false, busy = false,
             resultStatus = ResultStatus.NOT_VERIFIED,
             initiatingPackage = initiator, installingPackage = installing,
-            message = "APK installed, but Google Play attribution was not accepted.",
-            details = "")
+            message = "APK installed; installation metadata does not match known Android Auto checks.",
+            details = "Initiator: ${initiator ?: "unknown"}; installer: ${installing ?: "unknown"}. Launcher visibility is not guaranteed.")
+        return true
     }
 
     /** Discard a selected APK without stopping the Shizuku service.
