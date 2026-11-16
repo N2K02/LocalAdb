@@ -40,8 +40,6 @@ internal fun AndroidAutoInstallerCard() {
     val state by AndroidAutoPackageInstaller.state.collectAsState()
     val server by NativeShizukuManager.state.collectAsState()
     var showDetails by rememberSaveable { mutableStateOf(false) }
-    var showComparison by rememberSaveable { mutableStateOf(false) }
-    var comparison by remember { mutableStateOf("") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             showDetails = false
@@ -177,21 +175,6 @@ internal fun AndroidAutoInstallerCard() {
                     }
                 }
                 if (showDetails) AndroidAutoInstallerDetails(state)
-            }
-            OutlinedButton(
-                onClick = {
-                    comparison = AndroidAutoInstallDiagnostics.summary(context)
-                    showComparison = !showComparison
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (showComparison) "Hide AA app comparison" else "Compare AABrowser / AAYouTube")
-            }
-            if (showComparison) {
-                SelectionContainer {
-                    Text(comparison, style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace)
-                }
             }
             if (!server.serviceReady) {
                 Text("Start the embedded Shizuku manager for the shell-assisted method.",
