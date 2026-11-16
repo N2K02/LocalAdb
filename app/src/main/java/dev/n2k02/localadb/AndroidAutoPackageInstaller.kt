@@ -357,10 +357,29 @@ internal object AndroidAutoPackageInstaller {
                 if (path == AndroidAutoInstallPolicy.Path.SHELL) {
                     intent.component = ComponentName.unflattenFromString(target)
                     val result = withContext(Dispatchers.IO) {
-                        startWithLocalHelper(activity, intent)
+                        runCatching { startWithLocalHelper(activity, intent) }
+                            .getOrElse { "Shizuku helper failed: " + (it.message ?: "unknown") }
                     }
-                    check(result == "ok") { "System installer launch failed: " + result }
+                    if (result != "ok") {
+                        // Binder and shell launch both failed. Use Android's normal
+                        // confirmation UI, but never retry after a launch succeeded.
+                        appLog.append("AA system installer helper unavailable: " + result.take(180))
+                        if (!activity.packageManager.canRequestPackageInstalls()) {
+                            state.value = state.value.copy(busy = false, pending = false,
+                                resultStatus = ResultStatus.NOT_VERIFIED,
+                                message = "System installer fallback needs Install unknown apps permission.")
+                            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:" + activity.packageName)))
+                            return@launch
+                        }
+                        intent.component = null
+                        activity.startActivity(intent)
+                        lastPath = AndroidAutoInstallPolicy.Path.APP
+                        state.value = state.value.copy(installMethod = "APP",
+                            message = "Confirm the Android system installer prompt (fallback).")
+                    }
                 } else {
+                    // An implicit system installer allows OEM package handlers.
                     activity.startActivity(intent)
                 }
                 state.value = state.value.copy(busy = false)
