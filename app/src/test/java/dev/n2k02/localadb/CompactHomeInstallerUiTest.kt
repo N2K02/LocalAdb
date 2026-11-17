@@ -58,13 +58,13 @@ class CompactHomeInstallerUiTest {
         assertTrue(ui.contains("SelectionContainer"))
     }
 
-    @Test fun shizukuHomeInstallerDefaultsToDirectAndOffersNativeFallback() {
+    @Test fun aaHomeInstallerDefaultsToSystemAndOffersDirectAdb() {
         val ui = source("AndroidAutoInstallerCard.kt")
         val installer = source("AndroidAutoPackageInstaller.kt")
         assertTrue(ui.contains("AndroidAutoPackageInstaller::installDirectFromHome"))
         assertTrue(ui.contains("AndroidAutoPackageInstaller::install"))
-        assertTrue(ui.contains("Text(\"Native install\""))
-        assertTrue(ui.contains("Native install opens Android confirmation."))
+        assertTrue(ui.contains("Text(\"Direct ADB\""))
+        assertTrue(ui.contains("AA install opens Android confirmation; Direct ADB uses ADB."))
         assertFalse(ui.contains("Google Play as installer of record"))
         assertFalse(ui.contains("DirectInstallAttribution.setEnabled(context, it)"))
         assertTrue(installer.contains("requestedInstaller = requestedInstaller"))
@@ -78,7 +78,7 @@ class CompactHomeInstallerUiTest {
         assertTrue(installer.contains("Package manager reported success"))
     }
 
-    @Test fun resultBadgeIsSeparateFromAdbReadinessAndNativeActionIsProminent() {
+    @Test fun resultBadgeIsSeparateFromAdbReadinessAndAaActionIsProminent() {
         val ui = source("AndroidAutoInstallerCard.kt")
         val controller = source("AndroidAutoPackageInstaller.kt")
         assertTrue(ui.contains("InstallerResultSummary(state)"))
@@ -88,8 +88,8 @@ class CompactHomeInstallerUiTest {
         assertTrue(ui.contains("server.serviceReady -> \"ADB ready\""))
         assertTrue(ui.contains("FilledTonalButton("))
         assertTrue(ui.contains("onClick = { activity?.let(AndroidAutoPackageInstaller::install) }"))
-        assertTrue(ui.contains("Text(\"Native install\", maxLines = 1)"))
-        assertTrue(ui.contains("Text(\"Native install opens Android confirmation.\""))
+        assertTrue(ui.contains("Text(\"AA install\", maxLines = 1)"))
+        assertTrue(ui.contains("Text(\"AA install opens Android confirmation; Direct ADB uses ADB.\""))
         assertFalse(ui.contains("TextButton(\n                enabled = activity != null"))
         assertTrue(controller.contains("enum class ResultStatus"))
         assertTrue(controller.contains("resultStatus = ResultStatus.CANCELLED"))
@@ -103,7 +103,7 @@ class CompactHomeInstallerUiTest {
         assertTrue(ui.contains("AndroidAutoPackageInstaller.cancelSelection(context)"))
         assertTrue(ui.contains("Text(\"Cancel\", maxLines = 1)"))
         assertTrue(ui.contains("showDetails = false"))
-        assertTrue(ui.contains("Text(\"Native install\", maxLines = 1)"))
+        assertTrue(ui.contains("Text(\"Direct ADB\", maxLines = 1)"))
         assertTrue(installer.contains("fun cancelSelection(context: Context)"))
         assertTrue(installer.contains("if (state.value.busy || state.value.pending) return"))
         assertTrue(installer.contains("shutdown(context)"))

@@ -92,6 +92,41 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(installer.contains("Shizuku.unbindUserService(args, conn, true)"))
     }
 
+    @Test fun aaInstallerKeepsSystemAndDirectOptionsWithoutComparisonUi() {
+        val card = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoInstallerCard.kt").readText()
+        assertTrue(card.contains("AndroidAutoPackageInstaller::install)"))
+        assertTrue(card.contains("AndroidAutoPackageInstaller::installDirectFromHome)"))
+        assertFalse(card.contains("Compare AABrowser / AAYouTube"))
+        assertFalse(card.contains("showComparison"))
+        assertFalse(card.contains("AndroidAutoInstallDiagnostics.summary(context)"))
+    }
+
+    @Test fun metadataReadbackIsBoundedAndDoesNotUseInstallerSpoofingForApproval() {
+        val installer = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
+        assertTrue(installer.contains("listOf(800L, 1200L, 2000L, 3500L)"))
+        assertTrue(installer.contains("verificationGeneration"))
+        assertTrue(installer.contains("queryIntentActivities(probe, 0)"))
+        assertTrue(installer.contains("FLAG_SYSTEM"))
+        assertTrue(installer.contains("Android Auto approval is not guaranteed"))
+    }
+
+    @Test fun shizukuLaunchFallsBackWithoutRunningDirectPmInstall() {
+        val helper = java.io.File("src/main/java/dev/n2k02/localadb/LocalHelperService.kt").readText()
+        val installer = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
+        assertTrue(helper.contains("val binderResult"))
+        assertTrue(helper.contains("if (binderResult == \"ok\") return binderResult"))
+        assertTrue(helper.contains("ProcessBuilder(\"/system/bin/sh\", \"-c\", command)"))
+        assertTrue(helper.contains("process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)"))
+        assertTrue(helper.contains("AndroidAutoInstallPolicy.shellCommand("))
+        assertFalse(helper.contains("pm install-create"))
+        assertTrue(installer.contains("if (result != \"ok\")"))
+        assertTrue(installer.contains("intent.component = nativeHandler"))
+        assertTrue(installer.contains("No verified system installer activity"))
+        assertTrue(installer.contains("verifiedHandlers.add(ComponentName(pkg, handler.activityInfo.name))"))
+        assertTrue(installer.contains("activity.startActivity(intent)"))
+        assertTrue(installer.contains("lastPath = AndroidAutoInstallPolicy.Path.APP"))
+    }
+
     @Test fun quitClearsInstallerSessionBeforeStoppingShizuku() {
         val activity = java.io.File("src/main/java/dev/n2k02/localadb/MainActivity.kt")
             .readText()

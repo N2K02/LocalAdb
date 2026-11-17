@@ -60,14 +60,14 @@ internal fun AndroidAutoInstallerCard() {
     ModernPanel(Modifier.fillMaxWidth(), DashboardTone.NEUTRAL, compact = true) {
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             ModernSectionHeader(
-                title = "Shizuku package installer",
-                subtitle = "Direct ADB install · native fallback",
+                title = "ADB package installer",
+                subtitle = "System installer for car apps · direct ADB optional",
                 icon = Icons.Rounded.Android,
                 tone = DashboardTone.NEUTRAL,
                 status = when {
                     state.pending || state.busy -> "Working"
                     server.serviceReady -> "ADB ready"
-                    else -> "Shizuku offline"
+                    else -> "ADB offline"
                 },
                 statusTone = when {
                     state.pending || state.busy -> DashboardTone.WARN
@@ -103,12 +103,12 @@ internal fun AndroidAutoInstallerCard() {
                     modifier = Modifier.weight(1f),
                     enabled = activity != null && state.packageName != null &&
                         !state.busy && !state.pending,
-                    onClick = { activity?.let(AndroidAutoPackageInstaller::installDirectFromHome) }
+                    onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
                 ) {
                     Icon(Icons.Rounded.InstallMobile, contentDescription = null,
                         modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("Install", maxLines = 1)
+                    Text("AA install", maxLines = 1)
                 }
             }
             if (state.packageName != null) {
@@ -134,15 +134,15 @@ internal fun AndroidAutoInstallerCard() {
                         modifier = Modifier.weight(1.15f),
                         enabled = activity != null && !state.busy && !state.pending,
                         shape = MaterialTheme.shapes.extraLarge,
-                        onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
+                        onClick = { activity?.let(AndroidAutoPackageInstaller::installDirectFromHome) }
                     ) {
                         Icon(Icons.Rounded.PhoneAndroid, contentDescription = null,
                             modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(5.dp))
-                        Text("Native install", maxLines = 1)
+                        Text("Direct ADB", maxLines = 1)
                     }
                 }
-                Text("Native install opens Android confirmation.",
+                Text("AA install opens Android confirmation; Direct ADB uses ADB.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -177,7 +177,7 @@ internal fun AndroidAutoInstallerCard() {
                 if (showDetails) AndroidAutoInstallerDetails(state)
             }
             if (!server.serviceReady) {
-                Text("Start the embedded Shizuku manager for the shell-assisted method.",
+                Text("Start the embedded ADB manager for the shell-assisted method.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -265,7 +265,7 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                 InstallerDetailRow("Method",
                     when (it) {
                         "DIRECT_ADB" -> "ADB shell · direct"
-                        "SHELL" -> "Shizuku · system installer"
+                        "SHELL" -> "ADB · system installer"
                         else -> "System installer"
                     })
             }

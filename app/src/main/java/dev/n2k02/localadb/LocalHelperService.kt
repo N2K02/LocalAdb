@@ -55,37 +55,50 @@ class LocalHelperService : Binder() {
         val command = AndroidAutoInstallPolicy.shellCommand(
             "dev.n2k02.localadb", component
         )
-        return if (Build.VERSION.SDK_INT <= 34) {
-            // Android 14 and earlier validate the result caller. Supplying the
-            // LocalAdb activity token keeps LocalAdb as the permission requester.
+        // KingInstaller-style ordered shell fallback: direct ActivityTaskManager
+        // Binder first, then the fixed, validated system-installer launch command.
+        // Neither path installs the APK itself; the user confirms the system dialog.
+        val binderResult = if (Build.VERSION.SDK_INT <= 34) runCatching {
             checkNotNull(resultTo) { "Missing requesting activity token" }
-            try {
-                val service = if (Build.VERSION.SDK_INT >= 29)
-                    Class.forName("android.app.ActivityTaskManager")
-                        .getMethod("getService").invoke(null)
-                else ActivityManager::class.java.getMethod("getService").invoke(null)
-                val method = service.javaClass.methods.firstOrNull { m ->
-                    m.name == "startActivity" &&
-                        ((m.parameterTypes.size == 11 && m.parameterTypes[3] == Intent::class.java) ||
-                            (m.parameterTypes.size == 10 && m.parameterTypes[2] == Intent::class.java))
-                } ?: error("No supported system startActivity signature")
-                val args = if (method.parameterTypes.size == 11)
-                    arrayOf(null, "com.android.shell", null, intent, intent.type,
-                        resultTo, null, 1720, 0, null, null)
-                else arrayOf(null, "com.android.shell", intent, intent.type,
+            val service = if (Build.VERSION.SDK_INT >= 29)
+                Class.forName("android.app.ActivityTaskManager")
+                    .getMethod("getService").invoke(null)
+            else ActivityManager::class.java.getMethod("getService").invoke(null)
+            val method = service.javaClass.methods.firstOrNull { m ->
+                m.name == "startActivity" &&
+                    ((m.parameterTypes.size == 11 && m.parameterTypes[3] == Intent::class.java) ||
+                        (m.parameterTypes.size == 10 && m.parameterTypes[2] == Intent::class.java))
+            } ?: error("No supported system startActivity signature")
+            val args = if (method.parameterTypes.size == 11)
+                arrayOf(null, "com.android.shell", null, intent, intent.type,
                     resultTo, null, 1720, 0, null, null)
-                val result = method.invoke(service, *args) as Int
-                if (result >= 0) "ok" else "System installer start failed: " + result
-            } catch (failure: InvocationTargetException) {
-                "System installer error: " + failure.targetException.message
-            }
-        } else {
+            else arrayOf(null, "com.android.shell", intent, intent.type,
+                resultTo, null, 1720, 0, null, null)
+            val result = method.invoke(service, *args) as Int
+            if (result >= 0) "ok" else "System installer start failed: " + result
+        }.getOrElse { failure ->
+            val cause = (failure as? InvocationTargetException)?.targetException ?: failure
+            "Binder installer error: " + (cause.message ?: cause.javaClass.simpleName)
+        } else "Binder not available on this Android version"
+        if (binderResult == "ok") return binderResult
+        return try {
             val process = ProcessBuilder("/system/bin/sh", "-c", command)
                 .redirectErrorStream(true).start()
-            val output = process.inputStream.bufferedReader().use { it.readText().take(2048) }
-            if (process.waitFor() == 0 && !output.contains("Error:", ignoreCase = true))
-                "ok"
-            else "Installer failed: " + output
+            if (!process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                "System installer command timed out; " + binderResult
+            } else {
+                val output = process.inputStream.bufferedReader().use { it.readText().take(2048) }
+                if (process.exitValue() == 0 &&
+                    !output.contains("Error:", ignoreCase = true) &&
+                    !output.contains("Exception", ignoreCase = true))
+                    "ok"
+                else "System installer launch failed: " + output.take(250) +
+                    "; Binder: " + binderResult
+            }
+        } catch (failure: Exception) {
+            "System installer unavailable: " + (failure.message ?: failure.javaClass.simpleName) +
+                "; Binder: " + binderResult
         }
     }
 
