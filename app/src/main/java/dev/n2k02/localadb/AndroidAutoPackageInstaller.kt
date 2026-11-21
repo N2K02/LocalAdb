@@ -334,8 +334,9 @@ internal object AndroidAutoPackageInstaller {
                 val reason = failure.message ?: failure.javaClass.simpleName
                 appLog.append("AA install ${path.name} launch failed: ${reason.take(250)}")
                 state.value = state.value.copy(busy = false, pending = false,
-                    resultStatus = ResultStatus.FAILED, message = "Could not open Android installer.",
-                    details = reason)
+                    resultStatus = ResultStatus.FAILED,
+                    message = "Could not open Android installer. ${reason.take(180)}",
+                    details = reason.takeIf { it.length > 180 }.orEmpty())
             }
         }
     }

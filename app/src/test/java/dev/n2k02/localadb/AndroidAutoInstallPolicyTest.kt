@@ -115,6 +115,7 @@ class AndroidAutoInstallPolicyTest {
         val installer = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
         assertTrue(helper.contains("PackageManager.MATCH_SYSTEM_ONLY"))
         assertTrue(helper.contains("ComponentName.unflattenFromString(it.trim()) == component"))
+        assertTrue(helper.contains("startActivityAsUser"))
         assertTrue(helper.contains("ProcessBuilder(args)"))
         assertTrue(helper.contains("process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)"))
         assertFalse(helper.contains("pm install-create"))
