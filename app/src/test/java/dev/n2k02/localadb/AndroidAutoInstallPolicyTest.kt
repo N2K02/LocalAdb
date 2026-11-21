@@ -28,36 +28,31 @@ class AndroidAutoInstallPolicyTest {
         assertFalse(policy.accepts(null, "com.android.shell", 29))
     }
 
-    @Test fun launchFallsBackOnlyWhenShellUnavailableOrPreviouslyRejected() {
-        assertEquals(AndroidAutoInstallPolicy.Path.SHELL, policy.firstPath(true, true))
-        assertEquals(AndroidAutoInstallPolicy.Path.APP, policy.firstPath(false, true))
-        assertEquals(AndroidAutoInstallPolicy.Path.APP, policy.firstPath(true, false))
+    @Test fun recognizesOnlyVerifiedOemInitiators() {
+        val oem = "com.miui.packageinstaller"
+        assertFalse(policy.accepts(oem, policy.VENDING, 37))
+        assertTrue(policy.accepts(oem, policy.VENDING, 37, setOf(oem)))
+        assertFalse(policy.accepts(oem, "dev.n2k02.localadb", 37, setOf(oem)))
+        assertFalse(policy.accepts("com.android.shell", policy.VENDING, 37, setOf("com.android.shell")))
     }
 
-    @Test fun noRetryAfterCancelOrRepeatedFailureOrVerifiedSuccess() {
-        assertFalse(policy.shouldRetry(changed = false, accepted = false, alreadyRetried = false))
-        assertFalse(policy.shouldRetry(changed = true, accepted = true, alreadyRetried = false))
-        assertFalse(policy.shouldRetry(changed = true, accepted = false, alreadyRetried = true))
-        assertTrue(policy.shouldRetry(changed = true, accepted = false, alreadyRetried = false))
+    @Test fun selectedVersionRequiresNewTimestampOrSuccessfulInstallerResult() {
+        assertTrue(policy.isSelectedInstall(101, 101, 11, 10, false))
+        assertFalse(policy.isSelectedInstall(101, 101, 10, 10, false))
+        assertTrue(policy.isSelectedInstall(101, 101, 10, 10, true))
+        assertFalse(policy.isSelectedInstall(102, 101, 11, 10, true))
+        assertFalse(policy.isSelectedInstall(null, 101, 11, 10, true))
     }
 
-    @Test fun shellCommandLaunchesSystemInstallerAndNeverPmInstall() {
-        val command = policy.shellCommand("dev.n2k02.localadb", policy.GOOGLE_INSTALLER)
-        assertTrue(command.startsWith("am start -n " + policy.GOOGLE_INSTALLER))
-        assertTrue(command.contains("content://dev.n2k02.localadb.android-auto-apk/selected.apk"))
-        assertTrue(command.contains("--es android.intent.extra.INSTALLER_PACKAGE_NAME com.android.vending"))
-        assertTrue(command.contains("--ez android.intent.extra.NOT_UNKNOWN_SOURCE true"))
-        assertFalse(command.contains("pm install"))
-        assertFalse(command.contains("adb install"))
-    }
-
-    @Test fun shellCommandRejectsArbitraryComponentsAndInjection() {
+    @Test fun shellLaunchKeepsApkReadGrantAndSystemConfirmation() {
+        val component = "com.miui.packageinstaller/.InstallActivity"
+        val uri = "content://dev.n2k02.localadb.android-auto-apk/selected.apk"
+        val args = policy.shellLaunchArgs(component, uri)
+        assertEquals(listOf("/system/bin/am", "start", "-n", component), args.take(4))
+        assertTrue(args.containsAll(listOf(policy.INSTALL_ACTION, uri, "--grant-read-uri-permission")))
+        assertFalse(args.contains("install-create"))
         assertThrows(IllegalArgumentException::class.java) {
-            policy.shellCommand("dev.n2k02.localadb;rm -rf /",
-                policy.GOOGLE_INSTALLER)
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            policy.shellCommand("dev.n2k02.localadb", "evil/.Activity")
+            policy.shellLaunchArgs("com.miui.packageinstaller/.InstallActivity;cmd", uri)
         }
     }
 
@@ -84,8 +79,8 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(provider.contains("uri.path == \"/selected.apk\""))
         assertTrue(provider.contains("mode != \"r\""))
         assertTrue(service.contains("Process.myUid() == Process.SHELL_UID"))
-        assertTrue(service.contains("check(uri == expected)"))
-        assertTrue(installer.contains("getInstallSourceInfo(name)"))
+        assertTrue(service.contains("check(uri == expected && request.type"))
+        assertTrue(installer.contains("DirectInstallAttribution.readBack(app, session.packageName)"))
         assertTrue(installer.contains("previousUpdate"))
         assertTrue(installer.contains("compatibleSigner"))
         assertTrue(installer.contains("Shizuku.bindUserService(args, conn)"))
@@ -94,37 +89,38 @@ class AndroidAutoInstallPolicyTest {
 
     @Test fun aaInstallerKeepsSystemAndDirectOptionsWithoutComparisonUi() {
         val card = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoInstallerCard.kt").readText()
-        assertTrue(card.contains("AndroidAutoPackageInstaller::install)"))
+        assertTrue(card.contains("AndroidAutoPackageInstaller::installViaShizuku)"))
         assertTrue(card.contains("AndroidAutoPackageInstaller::installDirectFromHome)"))
+        assertTrue(card.contains("installApkWithSystem()"))
         assertFalse(card.contains("Compare AABrowser / AAYouTube"))
         assertFalse(card.contains("showComparison"))
         assertFalse(card.contains("AndroidAutoInstallDiagnostics.summary(context)"))
     }
 
-    @Test fun metadataReadbackIsBoundedAndDoesNotUseInstallerSpoofingForApproval() {
+    @Test fun resultCallbackAndBoundedReadbackNeverLaunchAgain() {
         val installer = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
-        assertTrue(installer.contains("listOf(800L, 1200L, 2000L, 3500L)"))
-        assertTrue(installer.contains("verificationGeneration"))
-        assertTrue(installer.contains("queryIntentActivities(probe, 0)"))
-        assertTrue(installer.contains("FLAG_SYSTEM"))
-        assertTrue(installer.contains("Android Auto approval is not guaranteed"))
+        val activity = java.io.File("src/main/java/dev/n2k02/localadb/MainActivity.kt").readText()
+        val verification = installer.substringAfter("fun onInstallerResult(").substringBefore("fun cancelSelection(")
+        assertTrue(activity.contains("ActivityResultContracts.StartActivityForResult()"))
+        assertTrue(activity.contains("AndroidAutoPackageInstaller.onInstallerResult(this, result.resultCode)"))
+        assertTrue(verification.contains("attempt !== session"))
+        assertTrue(verification.contains("index == delays.lastIndex"))
+        assertTrue(verification.contains("Activity.RESULT_CANCELED"))
+        assertFalse(verification.contains("launch(activity,"))
+        assertFalse(installer.contains("shell_works"))
     }
 
-    @Test fun shizukuLaunchFallsBackWithoutRunningDirectPmInstall() {
+    @Test fun shellIndependentlyChecksThatSelectedComponentIsASystemHandler() {
         val helper = java.io.File("src/main/java/dev/n2k02/localadb/LocalHelperService.kt").readText()
         val installer = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt").readText()
-        assertTrue(helper.contains("val binderResult"))
-        assertTrue(helper.contains("if (binderResult == \"ok\") return binderResult"))
-        assertTrue(helper.contains("ProcessBuilder(\"/system/bin/sh\", \"-c\", command)"))
+        assertTrue(helper.contains("PackageManager.MATCH_SYSTEM_ONLY"))
+        assertTrue(helper.contains("ComponentName.unflattenFromString(it.trim()) == component"))
+        assertTrue(helper.contains("ProcessBuilder(args)"))
         assertTrue(helper.contains("process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)"))
-        assertTrue(helper.contains("AndroidAutoInstallPolicy.shellCommand("))
         assertFalse(helper.contains("pm install-create"))
-        assertTrue(installer.contains("if (result != \"ok\")"))
-        assertTrue(installer.contains("intent.component = nativeHandler"))
-        assertTrue(installer.contains("No verified system installer activity"))
-        assertTrue(installer.contains("verifiedHandlers.add(ComponentName(pkg, handler.activityInfo.name))"))
-        assertTrue(installer.contains("activity.startActivity(intent)"))
-        assertTrue(installer.contains("lastPath = AndroidAutoInstallPolicy.Path.APP"))
+        assertTrue(installer.contains("val handlers = findSystemInstallers(activity, intent)"))
+        assertTrue(installer.contains("openInstaller)(intent)"))
+        assertTrue(installer.contains("check(result == \"ok\")"))
     }
 
     @Test fun quitClearsInstallerSessionBeforeStoppingShizuku() {

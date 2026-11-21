@@ -14,7 +14,6 @@ import android.os.Parcel
 import android.os.Process
 import android.os.ParcelFileDescriptor
 import android.provider.Settings
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +52,7 @@ internal object AndroidAutoPackageInstaller {
         val requestedInstaller: String? = null,
         val attributionStatus: String = "",
         val installMethod: String? = null,
+        val installerComponent: String? = null,
         val details: String = "",
     )
     val state = MutableStateFlow(State())
@@ -60,10 +60,22 @@ internal object AndroidAutoPackageInstaller {
     private var task: Job? = null
     private var archive: PackageInfo? = null
     private var pausedDuringInstall = false
-    private var previousUpdate = 0L
-    private var retried = false
-    private var lastPath = AndroidAutoInstallPolicy.Path.SHELL
-    private var verificationGeneration = 0
+    private var verification: Job? = null
+    private var attempt: InstallAttempt? = null
+
+    private data class InstallAttempt(
+        val path: AndroidAutoInstallPolicy.Path,
+        val packageName: String,
+        val version: Long,
+        val previousUpdate: Long,
+        val component: ComponentName,
+        val verifiedInstallerPackages: Set<String>,
+    )
+
+    @Suppress("DEPRECATION")
+    private fun versionCode(info: PackageInfo?): Long? = info?.let {
+        if (Build.VERSION.SDK_INT >= 28) it.longVersionCode else it.versionCode.toLong()
+    }
 
     private fun packageInfo(context: Context, name: String): PackageInfo? = try {
         @Suppress("DEPRECATION")
@@ -130,17 +142,11 @@ internal object AndroidAutoPackageInstaller {
         }
     }
 
-    fun install(activity: Activity) {
-        if (state.value.busy || state.value.pending || archive == null) return
-        retried = false
-        val shellReady = NativeShizukuManager.state.value.serviceReady && runCatching {
-            Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID
-        }.getOrDefault(false)
-        val preferred = activity.getSharedPreferences("android_auto_installer", Context.MODE_PRIVATE)
-            .getBoolean("shell_works", true)
-        val path = AndroidAutoInstallPolicy.firstPath(shellReady, preferred)
-        launch(activity, path)
-    }
+    fun installViaShizuku(activity: Activity) =
+        launch(activity, AndroidAutoInstallPolicy.Path.SHELL)
+
+    fun installWithSystem(activity: Activity, openInstaller: (Intent) -> Unit) =
+        launch(activity, AndroidAutoInstallPolicy.Path.APP, openInstaller)
 
     /**
      * Shared safety preflight for the Home Shizuku installer and direct APK flow.
@@ -197,7 +203,7 @@ internal object AndroidAutoPackageInstaller {
                 state.value = state.value.copy(
                     busy = true, pending = false, success = false,
                     resultStatus = ResultStatus.INSTALLING,
-                    installMethod = "DIRECT_ADB",
+                    installMethod = "DIRECT_ADB", installerComponent = null,
                     initiatingPackage = null, installingPackage = null,
                     requestedInstaller = null, attributionStatus = "",
                     message = "Installing selected APK with Shizuku shell…",
@@ -255,160 +261,99 @@ internal object AndroidAutoPackageInstaller {
         return allowed.containsAll(existing)
     }
 
-    private fun launch(activity: Activity, path: AndroidAutoInstallPolicy.Path) {
+    private fun launch(
+        activity: Activity,
+        path: AndroidAutoInstallPolicy.Path,
+        openInstaller: ((Intent) -> Unit)? = null,
+    ) {
+        if (state.value.busy || state.value.pending || archive == null) return
         task?.cancel()
         task = scope.launch {
             val staged = archive ?: return@launch
-            val packageName = staged.packageName
             try {
-                state.value = state.value.copy(busy = true, success = false,
-                    resultStatus = ResultStatus.INSTALLING,
+                state.value = state.value.copy(
+                    busy = true, success = false, resultStatus = ResultStatus.INSTALLING,
                     initiatingPackage = null, installingPackage = null,
                     requestedInstaller = null, attributionStatus = "",
-                    message = "Checking APK and installed version…")
-                val old = packageInfo(activity, packageName)
-                @Suppress("DEPRECATION")
-                val oldCode = if (Build.VERSION.SDK_INT >= 28) old?.longVersionCode
-                    else old?.versionCode?.toLong()
-                @Suppress("DEPRECATION")
-                val newCode = if (Build.VERSION.SDK_INT >= 28) staged.longVersionCode
-                    else staged.versionCode.toLong()
-                check(oldCode == null || newCode >= oldCode) {
-                    "A newer version is already installed. Uninstall it first."
-                }
-                check(old == null || compatibleSigner(staged, old)) {
-                    "The installed app has a different signing key. " +
-                        "Uninstalling it would erase its data; no changes were made."
+                    installMethod = path.name, installerComponent = null,
+                    message = "Checking APK and installed version…", details = "",
+                )
+                if (path == AndroidAutoInstallPolicy.Path.SHELL) {
+                    check(NativeShizukuManager.state.value.serviceReady &&
+                        Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID) {
+                        "Start embedded Shizuku, then retry."
+                    }
                 }
                 if ((path == AndroidAutoInstallPolicy.Path.APP || Build.VERSION.SDK_INT <= 34) &&
                     !activity.packageManager.canRequestPackageInstalls()) {
-                    state.value = state.value.copy(busy = false, pending = false,
-                        resultStatus = ResultStatus.IDLE,
-                        message = "Allow LocalAdb to install unknown apps, then tap Install again.")
+                    state.value = state.value.copy(busy = false, resultStatus = ResultStatus.IDLE,
+                        message = "Allow LocalADB to install unknown apps, then retry.")
                     activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                         Uri.parse("package:" + activity.packageName)))
                     return@launch
                 }
-                if (path == AndroidAutoInstallPolicy.Path.SHELL) {
-                    check(NativeShizukuManager.state.value.serviceReady &&
-                        Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID) {
-                        "Embedded Shizuku UID 2000 is not ready"
-                    }
-                }
-                previousUpdate = old?.lastUpdateTime ?: 0
-                lastPath = path
-                pausedDuringInstall = false
                 val file = AndroidAutoApkProvider.file(activity)
-                check(file.exists()) { "The staged APK is no longer available" }
+                validateInstallCompatibility(activity, file)
+                val previous = packageInfo(activity, staged.packageName)
                 val uri = AndroidAutoApkProvider.uri(activity)
-                val target = if (Build.VERSION.SDK_INT >= 29 &&
-                    runCatching { activity.packageManager.getPackageInfo(
-                        "com.google.android.packageinstaller", 0) }.isSuccess)
-                    AndroidAutoInstallPolicy.GOOGLE_INSTALLER
-                    else AndroidAutoInstallPolicy.AOSP_INSTALLER
-                // Discover OEM installer handlers, not just Google's/AOSP's package name.
-                // Grants are read-only; PackageManager still owns authorization.
-                val candidates = mutableSetOf(AndroidAutoInstallPolicy.VENDING)
-                val knownSystemInstallers = setOf(
-                    "com.google.android.packageinstaller", "com.android.packageinstaller",
-                    "com.samsung.android.packageinstaller", "com.miui.packageinstaller",
-                    "com.coloros.packageinstaller", "com.oplus.packageinstaller"
-                )
-                val probe = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                    setDataAndType(uri, "application/vnd.android.package-archive")
-                }
-                @Suppress("DEPRECATION")
-                val discovered = activity.packageManager.queryIntentActivities(probe, 0)
-                val verifiedHandlers = mutableListOf<ComponentName>()
-                for (handler in discovered) {
-                    val pkg = handler.activityInfo?.packageName ?: continue
-                    // Grant only actual system/updated-system installer handlers.
-                    val flags = handler.activityInfo?.applicationInfo?.flags ?: 0
-                    val platform = flags and (
-                        android.content.pm.ApplicationInfo.FLAG_SYSTEM or
-                            android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                    if (platform && handler.activityInfo?.exported == true &&
-                        (pkg in knownSystemInstallers ||
-                            pkg.contains("packageinstaller", ignoreCase = true))) {
-                        candidates.add(pkg)
-                        verifiedHandlers.add(ComponentName(pkg, handler.activityInfo.name))
-                    }
-                }
-                for (pkg in candidates) {
-                    runCatching { activity.grantUriPermission(pkg, uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                }
-                // Never send our own staged APK to LocalAdb's exported APK
-                // handler: that can trigger a recursive self-install/overwrite.
-                val nativeHandler = verifiedHandlers.sortedBy {
-                    when (it.packageName) {
-                        "com.google.android.packageinstaller" -> 0
-                        "com.android.packageinstaller" -> 1
-                        else -> 2
-                    }
-                }.firstOrNull()
-                appLog.append("Native AA install: discovered ${discovered.size} handlers; trusted=${verifiedHandlers.size}")
                 val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    setDataAndType(uri, AndroidAutoInstallPolicy.APK_MIME_TYPE)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-                    putExtra(Intent.EXTRA_RETURN_RESULT, true)
-                    putExtra("android.intent.extra.INSTALLER_PACKAGE_NAME",
-                        AndroidAutoInstallPolicy.VENDING)
-                    putExtra("android.content.pm.extra.VERIFICATION_INSTALLER_PACKAGE",
-                        AndroidAutoInstallPolicy.VENDING)
-                    putExtra("android.intent.extra.INSTALL_REASON", 1)
-                    putExtra(Intent.EXTRA_REFERRER_NAME,
-                        "android-app://" + AndroidAutoInstallPolicy.VENDING)
-                    putExtra(Intent.EXTRA_REFERRER,
-                        Uri.parse("android-app://" + AndroidAutoInstallPolicy.VENDING))
                 }
-                state.value = state.value.copy(busy = true, pending = true,
-                    installMethod = path.name,
-                    message = "Confirm the system installer prompt…",
-                    details = "")
+                val handlers = findSystemInstallers(activity, intent)
+                val target = handlers.firstOrNull() ?: error("No verified Android package installer found")
+                val session = InstallAttempt(path, staged.packageName, requireNotNull(versionCode(staged)),
+                    previous?.lastUpdateTime ?: 0, target, handlers.map { it.packageName }.toSet())
+                attempt = session
+                pausedDuringInstall = false
+                activity.grantUriPermission(target.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                intent.component = target
+                intent.putExtra(Intent.EXTRA_RETURN_RESULT, path == AndroidAutoInstallPolicy.Path.APP)
                 if (path == AndroidAutoInstallPolicy.Path.SHELL) {
-                    intent.component = ComponentName.unflattenFromString(target)
-                    val result = withContext(Dispatchers.IO) {
-                        runCatching { startWithLocalHelper(activity, intent) }
-                            .getOrElse { "Shizuku helper failed: " + (it.message ?: "unknown") }
-                    }
-                    if (result != "ok") {
-                        // Binder and shell launch both failed. Use Android's normal
-                        // confirmation UI, but never retry after a launch succeeded.
-                        appLog.append("AA system installer helper unavailable: " + result.take(180))
-                        if (!activity.packageManager.canRequestPackageInstalls()) {
-                            state.value = state.value.copy(busy = false, pending = false,
-                                resultStatus = ResultStatus.NOT_VERIFIED,
-                                message = "System installer fallback needs Install unknown apps permission.")
-                            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                Uri.parse("package:" + activity.packageName)))
-                            return@launch
-                        }
-                        intent.component = nativeHandler
-                            ?: error("No verified system installer activity; refusing self-installer chooser")
-                        activity.startActivity(intent)
-                        lastPath = AndroidAutoInstallPolicy.Path.APP
-                        state.value = state.value.copy(installMethod = "APP",
-                            message = "Confirm the Android system installer prompt (fallback).")
+                    activity.grantUriPermission("com.android.shell", uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                state.value = state.value.copy(pending = true,
+                    installerComponent = target.flattenToShortString(),
+                    message = "Confirm the Android package installer prompt…")
+                appLog.append("AA install: ${path.name} opening ${target.flattenToShortString()}")
+                if (path == AndroidAutoInstallPolicy.Path.SHELL) {
+                    val result = withContext(Dispatchers.IO) { startWithLocalHelper(activity, intent) }
+                    check(result == "ok") { result.ifBlank { "Shizuku did not open the Android installer" } }
+                    if (attempt === session && !pausedDuringInstall && verification?.isActive != true) {
+                        // Covers installers that return without ever pausing LocalADB.
+                        verifyAfterLaunch(activity, session, resultCode = null, initialDelay = 10_000)
                     }
                 } else {
-                    // Resolve to a verified system/OEM installer. Our exported
-                    // APK receiver must never receive this staged file.
-                    intent.component = nativeHandler
-                        ?: error("No verified system installer activity; refusing self-installer chooser")
-                    activity.startActivity(intent)
+                    requireNotNull(openInstaller)(intent)
                 }
                 state.value = state.value.copy(busy = false)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
+                clearAttempt(activity)
+                val reason = failure.message ?: failure.javaClass.simpleName
+                appLog.append("AA install ${path.name} launch failed: ${reason.take(250)}")
                 state.value = state.value.copy(busy = false, pending = false,
-                    resultStatus = ResultStatus.FAILED,
-                    message = "Installation could not start: " +
-                        (failure.message ?: failure.javaClass.simpleName))
+                    resultStatus = ResultStatus.FAILED, message = "Could not open Android installer.",
+                    details = reason)
             }
         }
+    }
+
+    private fun findSystemInstallers(context: Context, intent: Intent): List<ComponentName> {
+        @Suppress("DEPRECATION")
+        return context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_SYSTEM_ONLY)
+            .mapNotNull { result ->
+                val info = result.activityInfo ?: return@mapNotNull null
+                if (!info.exported || !info.enabled || info.packageName == context.packageName) null
+                else ComponentName(info.packageName, info.name)
+            }
+            .distinct()
+            .sortedBy { when (it.packageName) {
+                "com.google.android.packageinstaller" -> 0
+                "com.android.packageinstaller" -> 1
+                else -> 2
+            } }
     }
 
     /** Installs one private, validated APK over a read-only descriptor using
@@ -466,7 +411,7 @@ internal object AndroidAutoPackageInstaller {
     internal suspend fun startWithLocalHelper(activity: Activity, intent: Intent): String {
         val args = Shizuku.UserServiceArgs(ComponentName(activity, LocalHelperService::class.java))
             .tag("localhelper-android-auto-installer")
-            .version(2)
+            .version(3)
             .processNameSuffix("android_auto_installer")
             .daemon(false)
         val attached = CompletableDeferred<IBinder>()
@@ -505,90 +450,99 @@ internal object AndroidAutoPackageInstaller {
     }
 
     fun onPause() {
-        if (state.value.pending) pausedDuringInstall = true
+        if (attempt?.path != AndroidAutoInstallPolicy.Path.SHELL) return
+        pausedDuringInstall = true
+        verification?.cancel()
+        verification = null
     }
 
-    fun onResume(activity: Activity) {
-        if (!state.value.pending || !pausedDuringInstall) return
+    fun onResume(context: Context) {
+        val session = attempt ?: return
+        if (session.path != AndroidAutoInstallPolicy.Path.SHELL || !pausedDuringInstall) return
         pausedDuringInstall = false
-        val generation = ++verificationGeneration
-        scope.launch {
-            // Package-manager install-source recording is asynchronous on some ROMs.
-            // Bounded readbacks, no second install or source manipulation.
-            for (delayMs in listOf(800L, 1200L, 2000L, 3500L)) {
-                delay(delayMs)
-                if (generation != verificationGeneration || !state.value.pending) return@launch
-                if (verify(activity, allowPending = delayMs != 3500L)) return@launch
+        verifyAfterLaunch(context, session, resultCode = null)
+    }
+
+    fun onInstallerResult(context: Context, resultCode: Int) {
+        val session = attempt ?: return
+        if (session.path == AndroidAutoInstallPolicy.Path.APP) {
+            verifyAfterLaunch(context, session, resultCode)
+        }
+    }
+
+    private fun verifyAfterLaunch(
+        context: Context, session: InstallAttempt, resultCode: Int?, initialDelay: Long = 0,
+    ) {
+        verification?.cancel()
+        val app = context.applicationContext
+        verification = scope.launch {
+            delay(initialDelay)
+            val delays = listOf(0L, 800L, 1200L, 2000L, 3500L)
+            for ((index, wait) in delays.withIndex()) {
+                delay(wait)
+                if (attempt !== session) return@launch
+                val now = packageInfo(app, session.packageName)
+                val installed = AndroidAutoInstallPolicy.isSelectedInstall(
+                    versionCode(now), session.version, now?.lastUpdateTime ?: 0, session.previousUpdate,
+                    resultCode == Activity.RESULT_OK,
+                )
+                val lastCheck = index == delays.lastIndex
+                if (installed) {
+                    val source = DirectInstallAttribution.readBack(app, session.packageName)
+                    val sourceComplete = source.available && source.installing != null &&
+                        (Build.VERSION.SDK_INT < 30 || source.initiating != null)
+                    if (sourceComplete || lastCheck) {
+                        finishAttempt(app, session, source, sourceComplete)
+                        return@launch
+                    }
+                } else if (lastCheck) {
+                    val (status, message) = when (resultCode) {
+                        Activity.RESULT_CANCELED -> ResultStatus.CANCELLED to "Android returned a cancelled result."
+                        Activity.RESULT_FIRST_USER -> ResultStatus.FAILED to "Android reported that the installation failed."
+                        else -> ResultStatus.NOT_VERIFIED to "No new installation of the selected APK could be verified."
+                    }
+                    revokeGrant(app, session)
+                    attempt = null
+                    state.value = state.value.copy(busy = false, pending = false,
+                        resultStatus = status, message = message)
+                }
             }
         }
     }
 
-    /** True once a definitive readback is available; false means retry metadata only. */
-    private fun verify(activity: Activity, allowPending: Boolean = false): Boolean {
-        val name = state.value.packageName ?: return true
-        val now = packageInfo(activity, name)
-        if (now == null || now.lastUpdateTime <= previousUpdate) {
-            if (allowPending) return false
-            state.value = state.value.copy(pending = false, busy = false,
-                resultStatus = ResultStatus.CANCELLED,
-                message = "Installation was cancelled or rejected. No new installation was detected.")
-            return true
+    private fun finishAttempt(
+        context: Context, session: InstallAttempt, source: DirectInstallAttribution.Source, complete: Boolean,
+    ) {
+        val matches = AndroidAutoInstallPolicy.accepts(
+            source.initiating, source.installing, Build.VERSION.SDK_INT, session.verifiedInstallerPackages,
+        )
+        val message = when {
+            !complete -> "Installed. Android did not provide complete install-source information."
+            matches -> "Installed with recognized source metadata. Check the Android Auto launcher."
+            else -> "Installed. The source metadata differs from the expected Android Auto test setup."
         }
-        val initiator: String?
-        val installing: String?
-        try {
-            if (Build.VERSION.SDK_INT >= 30) {
-                val source = activity.packageManager.getInstallSourceInfo(name)
-                initiator = source.initiatingPackageName
-                installing = source.installingPackageName
-            } else {
-                initiator = null
-                @Suppress("DEPRECATION")
-                installing = activity.packageManager.getInstallerPackageName(name)
-            }
-        } catch (failure: Exception) {
-            state.value = state.value.copy(pending = false, busy = false,
-                resultStatus = ResultStatus.NOT_VERIFIED,
-                message = "Installed, but install-source verification failed: " + failure.message)
-            return true
-        }
-        if (Build.VERSION.SDK_INT >= 30 && (initiator == null || installing == null) && allowPending)
-            return false
-        val accepted = AndroidAutoInstallPolicy.accepts(
-            initiator, installing, Build.VERSION.SDK_INT)
-        if (accepted) {
-            activity.getSharedPreferences("android_auto_installer", Context.MODE_PRIVATE)
-                .edit().putBoolean("shell_works",
-                    lastPath == AndroidAutoInstallPolicy.Path.SHELL).apply()
-            state.value = state.value.copy(pending = false, success = true,
-                resultStatus = ResultStatus.INSTALLED,
-                initiatingPackage = initiator, installingPackage = installing,
-                message = "Installed with recognized installation-source metadata; Android Auto approval is not guaranteed.",
-                details = "Initiator: ${initiator ?: "unknown"}; installer: ${installing ?: "unknown"}")
-            return true
-        }
-        if (AndroidAutoInstallPolicy.shouldRetry(true, accepted, retried)) {
-            retried = true
-            val alternate = if (lastPath == AndroidAutoInstallPolicy.Path.SHELL)
-                AndroidAutoInstallPolicy.Path.APP else AndroidAutoInstallPolicy.Path.SHELL
-            val shellReady = NativeShizukuManager.state.value.serviceReady && runCatching {
-                Shizuku.pingBinder() && Shizuku.getUid() == Process.SHELL_UID
-            }.getOrDefault(false)
-            if (alternate != AndroidAutoInstallPolicy.Path.SHELL || shellReady) {
-                state.value = state.value.copy(pending = false, busy = false,
-                    initiatingPackage = initiator, installingPackage = installing,
-                    message = "Attribution was rejected; retrying the alternative installer…",
-                    details = "")
-                launch(activity, alternate)
-                return true
-            }
-        }
-        state.value = state.value.copy(pending = false, busy = false,
-            resultStatus = ResultStatus.NOT_VERIFIED,
-            initiatingPackage = initiator, installingPackage = installing,
-            message = "APK installed; installation metadata does not match known Android Auto checks.",
-            details = "Initiator: ${initiator ?: "unknown"}; installer: ${installing ?: "unknown"}. Launcher visibility is not guaranteed.")
-        return true
+        revokeGrant(context, session)
+        attempt = null
+        state.value = state.value.copy(
+            busy = false, pending = false, success = true, resultStatus = ResultStatus.INSTALLED,
+            initiatingPackage = source.initiating, installingPackage = source.installing,
+            message = message, details = source.failure.orEmpty(),
+        )
+        appLog.append("AA install ${session.path.name}: initiator=${source.initiating}, installer=${source.installing}")
+    }
+
+    private fun clearAttempt(context: Context) {
+        verification?.cancel()
+        verification = null
+        attempt?.let { revokeGrant(context, it) }
+        attempt = null
+        pausedDuringInstall = false
+    }
+
+    private fun revokeGrant(context: Context, session: InstallAttempt) {
+        runCatching {
+            context.revokeUriPermission(AndroidAutoApkProvider.uri(context), Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }.onFailure { appLog.append("AA APK grant cleanup failed for ${session.component.packageName}") }
     }
 
     /** Discard a selected APK without stopping the Shizuku service.
@@ -604,16 +558,9 @@ internal object AndroidAutoPackageInstaller {
     fun shutdown(context: Context) {
         task?.cancel()
         task = null
-        pausedDuringInstall = false
+        clearAttempt(context)
         archive = null
         state.value = State()
         runCatching { AndroidAutoApkProvider.file(context).delete() }
-        runCatching {
-            for (pkg in arrayOf("com.google.android.packageinstaller",
-                "com.android.packageinstaller", AndroidAutoInstallPolicy.VENDING)) {
-                context.revokeUriPermission(AndroidAutoApkProvider.uri(context),
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-        }
     }
 }

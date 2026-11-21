@@ -1,6 +1,5 @@
 package dev.n2k02.localadb
 
-import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -28,15 +27,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @Composable
 internal fun AndroidAutoInstallerCard() {
     val context = LocalContext.current
-    val activity = context as? Activity
-    val lifecycle = LocalLifecycleOwner.current
+    val activity = context as? MainActivity
     val state by AndroidAutoPackageInstaller.state.collectAsState()
     val server by NativeShizukuManager.state.collectAsState()
     var showDetails by rememberSaveable { mutableStateOf(false) }
@@ -45,16 +40,6 @@ internal fun AndroidAutoInstallerCard() {
             showDetails = false
             AndroidAutoPackageInstaller.select(context, uri)
         }
-    }
-
-    DisposableEffect(lifecycle, activity) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) AndroidAutoPackageInstaller.onPause()
-            if (event == Lifecycle.Event.ON_RESUME && activity != null)
-                AndroidAutoPackageInstaller.onResume(activity)
-        }
-        lifecycle.lifecycle.addObserver(observer)
-        onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
 
     ModernPanel(Modifier.fillMaxWidth(), DashboardTone.NEUTRAL, compact = true) {
@@ -103,12 +88,12 @@ internal fun AndroidAutoInstallerCard() {
                     modifier = Modifier.weight(1f),
                     enabled = activity != null && state.packageName != null &&
                         !state.busy && !state.pending,
-                    onClick = { activity?.let(AndroidAutoPackageInstaller::install) }
+                    onClick = { activity?.let(AndroidAutoPackageInstaller::installViaShizuku) }
                 ) {
                     Icon(Icons.Rounded.InstallMobile, contentDescription = null,
                         modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("AA install", maxLines = 1)
+                    Text("AA via Shizuku")
                 }
             }
             if (state.packageName != null) {
@@ -142,9 +127,11 @@ internal fun AndroidAutoInstallerCard() {
                         Text("Direct ADB", maxLines = 1)
                     }
                 }
-                Text("AA install opens Android confirmation; Direct ADB uses ADB.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = activity != null && !state.busy && !state.pending,
+                    onClick = { activity?.installApkWithSystem() },
+                ) { Text("System install") }
             }
             val hasDetails = state.packageName != null || state.installMethod != null ||
                 state.initiatingPackage != null || state.installingPackage != null ||
@@ -214,7 +201,7 @@ private fun InstallerResultSummary(state: AndroidAutoPackageInstaller.State) {
                 MaterialTheme.colorScheme.errorContainer,
                 MaterialTheme.colorScheme.onErrorContainer)
         AndroidAutoPackageInstaller.ResultStatus.CANCELLED ->
-            ResultBadgeStyle("Cancelled or rejected", Icons.Rounded.Info,
+            ResultBadgeStyle("Cancelled", Icons.Rounded.Info,
                 MaterialTheme.colorScheme.surfaceContainerHighest,
                 MaterialTheme.colorScheme.onSurface)
         AndroidAutoPackageInstaller.ResultStatus.NOT_VERIFIED ->
@@ -265,7 +252,7 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                 InstallerDetailRow("Method",
                     when (it) {
                         "DIRECT_ADB" -> "ADB shell · direct"
-                        "SHELL" -> "ADB · system installer"
+                        "SHELL" -> "Shizuku · system installer"
                         else -> "System installer"
                     })
             }
@@ -273,7 +260,8 @@ private fun AndroidAutoInstallerDetails(state: AndroidAutoPackageInstaller.State
                 Text(state.attributionStatus, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (state.initiatingPackage != null || state.installingPackage != null) {
+            state.installerComponent?.let { InstallerDetailRow("Installer activity", it) }
+            if (state.installMethod != null) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 InstallerDetailRow("Initiator", state.initiatingPackage ?: "Not recorded")
                 InstallerDetailRow("Installer", state.installingPackage ?: "Not recorded")

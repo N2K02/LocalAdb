@@ -32,6 +32,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val packageInstaller = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        AndroidAutoPackageInstaller.onInstallerResult(this, result.resultCode)
+    }
+
+    internal fun installApkWithSystem() {
+        AndroidAutoPackageInstaller.installWithSystem(this, packageInstaller::launch)
+    }
+
     private fun canUseLocalNetwork(): Boolean = AdbNetworkAccess.granted(this)
 
     private fun startAdbWhenPermitted() {
@@ -57,11 +67,17 @@ class MainActivity : ComponentActivity() {
     }
     override fun onResume() {
         super.onResume()
+        AndroidAutoPackageInstaller.onResume(this)
         LiveUpdater.onResume(this)
         // Handles permission approval from Android App Info without requiring
         // a manual Retry button. start() is idempotent.
         if (canUseLocalNetwork()) AdbEngine.start(applicationContext)
     }
+    override fun onPause() {
+        AndroidAutoPackageInstaller.onPause()
+        super.onPause()
+    }
+
     private var quitting = false
 
     private fun quit() {
