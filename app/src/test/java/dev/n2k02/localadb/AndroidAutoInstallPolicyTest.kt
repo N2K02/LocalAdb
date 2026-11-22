@@ -161,6 +161,7 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(installer.contains("val handlers = findSystemInstallers(activity, intent)"))
         assertTrue(installer.contains("openInstaller)(intent)"))
         assertTrue(installer.contains("if (result.status != LaunchStatus.REJECTED) return result.copy(detail = detail)"))
+        assertTrue(installer.contains("if (path == AndroidAutoInstallPolicy.Path.SHELL) return result.copy(detail = detail)"))
     }
 
     @Test fun quitClearsInstallerSessionBeforeStoppingShizuku() {
