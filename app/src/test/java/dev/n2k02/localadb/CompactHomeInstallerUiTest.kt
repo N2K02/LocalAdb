@@ -52,19 +52,20 @@ class CompactHomeInstallerUiTest {
         assertTrue(ui.contains("state.initiatingPackage"))
         assertTrue(ui.contains("if (showDetails) AndroidAutoInstallerDetails(state)"))
         assertTrue(ui.contains("Google Play attribution does not guarantee"))
-        assertTrue(source.contains("initiatingPackage = initiator, installingPackage = installing"))
+        assertTrue(source.contains("DirectInstallAttribution.readBack(app, session.packageName)"))
+        assertTrue(source.contains("initiatingPackage = source.initiating, installingPackage = source.installing"))
         assertTrue(source.contains("initiatingPackage = null, installingPackage = null"))
         assertFalse(ui.contains("Text(state.details, fontFamily = FontFamily.Monospace"))
         assertTrue(ui.contains("SelectionContainer"))
     }
 
-    @Test fun shizukuHomeInstallerDefaultsToDirectAndOffersNativeFallback() {
+    @Test fun aaHomeInstallerDefaultsToSystemAndOffersDirectAdb() {
         val ui = source("AndroidAutoInstallerCard.kt")
         val installer = source("AndroidAutoPackageInstaller.kt")
         assertTrue(ui.contains("AndroidAutoPackageInstaller::installDirectFromHome"))
         assertTrue(ui.contains("AndroidAutoPackageInstaller::install"))
-        assertTrue(ui.contains("Text(\"Native install\""))
-        assertTrue(ui.contains("Native install opens Android confirmation."))
+        assertTrue(ui.contains("Text(\"Direct ADB\""))
+        assertTrue(ui.contains("installApkWithSystem()"))
         assertFalse(ui.contains("Google Play as installer of record"))
         assertFalse(ui.contains("DirectInstallAttribution.setEnabled(context, it)"))
         assertTrue(installer.contains("requestedInstaller = requestedInstaller"))
@@ -78,21 +79,20 @@ class CompactHomeInstallerUiTest {
         assertTrue(installer.contains("Package manager reported success"))
     }
 
-    @Test fun resultBadgeIsSeparateFromAdbReadinessAndNativeActionIsProminent() {
+    @Test fun resultBadgeIsSeparateFromAdbReadinessAndAaActionIsProminent() {
         val ui = source("AndroidAutoInstallerCard.kt")
         val controller = source("AndroidAutoPackageInstaller.kt")
         assertTrue(ui.contains("InstallerResultSummary(state)"))
         assertTrue(ui.contains("ResultBadgeStyle(\"Installation failed\""))
-        assertTrue(ui.contains("ResultBadgeStyle(\"Cancelled or rejected\""))
+        assertTrue(ui.contains("ResultBadgeStyle(\"Cancelled\""))
         assertTrue(ui.contains("ResultBadgeStyle(\"Installed\""))
         assertTrue(ui.contains("server.serviceReady -> \"ADB ready\""))
         assertTrue(ui.contains("FilledTonalButton("))
-        assertTrue(ui.contains("onClick = { activity?.let(AndroidAutoPackageInstaller::install) }"))
-        assertTrue(ui.contains("Text(\"Native install\", maxLines = 1)"))
-        assertTrue(ui.contains("Text(\"Native install opens Android confirmation.\""))
-        assertFalse(ui.contains("TextButton(\n                enabled = activity != null"))
+        assertTrue(ui.contains("onClick = { activity?.let(AndroidAutoPackageInstaller::installViaShizuku) }"))
+        assertTrue(ui.contains("Text(\"Shizuku install\")"))
+        assertTrue(ui.contains("Text(\"Android system installer\")"))
         assertTrue(controller.contains("enum class ResultStatus"))
-        assertTrue(controller.contains("resultStatus = ResultStatus.CANCELLED"))
+        assertTrue(controller.contains("Activity.RESULT_CANCELED -> ResultStatus.CANCELLED"))
         assertTrue(controller.contains("resultStatus = ResultStatus.FAILED"))
         assertTrue(controller.contains("resultStatus = ResultStatus.INSTALLED"))
     }
@@ -103,7 +103,7 @@ class CompactHomeInstallerUiTest {
         assertTrue(ui.contains("AndroidAutoPackageInstaller.cancelSelection(context)"))
         assertTrue(ui.contains("Text(\"Cancel\", maxLines = 1)"))
         assertTrue(ui.contains("showDetails = false"))
-        assertTrue(ui.contains("Text(\"Native install\", maxLines = 1)"))
+        assertTrue(ui.contains("Text(\"Direct ADB\", maxLines = 1)"))
         assertTrue(installer.contains("fun cancelSelection(context: Context)"))
         assertTrue(installer.contains("if (state.value.busy || state.value.pending) return"))
         assertTrue(installer.contains("shutdown(context)"))

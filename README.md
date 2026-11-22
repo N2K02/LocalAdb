@@ -13,7 +13,7 @@ header and VRec-style Home status cards.
   Android read-back grants** (Nearby Wi-Fi, Local network, Secure settings
   when eligible); no placeholder/mock permissions are shown. Counts of
   Shizuku clients and eligible Android grants are populated from a live scan.
-- **Home > Shizuku package installer**: choose one signed APK and confirm the system installer prompt. LocalAdb's embedded Shizuku UID 2000 LocalHelper launches the Android package installer with Google Play install-source attribution and checks the resulting PackageManager read-back. One alternate launch path is tried on OEMs that reject the first. This is **not** a silent install and does not magically make an incompatible APK work in Android Auto. Split APK / XAPK bundles are not supported.
+- **Home > Shizuku package installer**: choose a signed APK and select **AA via Shizuku**, **System install**, or **Direct ADB**. The first two open Android's confirmation prompt. LocalADB reports the recorded install source and the installer activity it selected.
 - **Apps**: matching gradient-accented client cards, verified color-coded
   Shizuku authorization badges, compact app statistics, search and
   User/System/Disabled/Hidden and Android grant filters. Shizuku API access
@@ -121,33 +121,27 @@ before calling it fully drop-in compatible.
 
 ## Android Auto package installer
 
-The **Shizuku package installer** card on Home follows the approach used in
-[UnknownAuto](https://github.com/GitMag/UnknownAuto), adapted to the **embedded**
-Shizuku manager and LocalHelper service already provided by LocalAdb. It is an
-installer tool, not an Android Auto modification or an APK patcher.
+The **Shizuku package installer** card is on Home. Choose a single signed APK
+and select an installation method.
 
-1. Start LocalAdb and wait for the embedded Shizuku Binder / UID 2000 to be ready.
-2. Tap **Choose APK** and select an ordinary signed .apk (not XAPK / split APKs).
-3. Tap **Install** and approve the Android **system** installer prompt. On older
-   Android versions you may first be asked to allow LocalAdb to install unknown apps.
-4. Read the attribution check. Successful read-back requires installing package
-   **com.android.vending** and an acceptable system installer initiating package.
-   Android Auto itself must still discover and support the app.
+- **AA via Shizuku** opens the verified Android package installer through the
+  embedded Shizuku shell. Start Shizuku and wait for it to be ready, then
+  approve the system confirmation.
+- **System install** opens the verified installer from LocalADB. Android may
+  ask for permission to install unknown apps.
+- **Direct ADB** uses the existing shell package session.
 
-LocalAdb validates the installed version/signing key, stages only the selected
-APK in private cache and grants read access to the system installer through a
-single-path, read-only provider. The shell helper accepts only that provider URI
-and an allowlisted system installer component. Android 14 and earlier use the
-Shizuku service's result-target launch; newer Android uses a shell-launched
-system installer. If an install succeeds without the expected mark, one alternate
-launch path is tried and the working method remembered. Install failures do not
-uninstall an existing app or delete its data. Quit clears the staged APK and
-cancels LocalAdb's pending installer operations.
+LocalADB checks the installed version and signing key before launch. The system
+installer receives read access to the selected APK. After an attempt, expand
+the result for the method, installer activity, initiator, and installer of
+record. If a verified installer explicitly rejects the launch, LocalADB can try the
+next verified handler. When the launch outcome is unclear, use **Check result**
+or **Stop waiting**. An open Shizuku install keeps its APK available for up to
+10 minutes.
 
-The metadata status is **not** a runtime Android Auto success guarantee. OEM
-package installers differ, Play Protect may block an APK, and Android Auto
-has other capability and compatibility checks. Validate on a real device and
-car/head unit before relying on this for release distribution.
+Android Auto launcher visibility depends on the installed app and head unit.
+Play Protect can scan the APK. Test with the car parked and check the actual
+launcher after reconnecting.
 
 ## ADB command privacy and safety
 

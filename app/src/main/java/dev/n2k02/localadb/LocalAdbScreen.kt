@@ -281,9 +281,9 @@ private fun HomePage(modifier: Modifier) {
         ModernPanel(Modifier.fillMaxWidth(), DashboardTone.INFO, compact = true) {
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 ModernSectionHeader(
-                    title = "Shizuku manager", icon = Icons.Rounded.Security,
+                    title = "ADB manager", icon = Icons.Rounded.Security,
                     tone = DashboardTone.INFO,
-                    subtitle = if (shizuku.serviceReady) "Embedded Shizuku server · UID 2000"
+                    subtitle = if (shizuku.serviceReady) "Embedded ADB server · UID 2000"
                         else shizuku.message,
                     status = when {
                         shizuku.serviceReady -> "Ready"
@@ -307,7 +307,7 @@ private fun HomePage(modifier: Modifier) {
                     Text(if (shizukuExpanded) "Collapse" else "Expand",
                         style = MaterialTheme.typography.labelMedium)
                     Icon(if (shizukuExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                        contentDescription = if (shizukuExpanded) "Collapse Shizuku manager" else "Expand Shizuku manager")
+                        contentDescription = if (shizukuExpanded) "Collapse ADB manager" else "Expand ADB manager")
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     HomeMetric("Binder", if (shizuku.serviceReady) "Active" else "Offline",
@@ -374,7 +374,7 @@ private fun HomePage(modifier: Modifier) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Start / Stop intents", style = MaterialTheme.typography.titleSmall)
-                        Text("Allow automation apps to control embedded Shizuku using a secret token.",
+                        Text("Allow automation apps to control embedded ADB using a secret token.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -423,7 +423,7 @@ private fun HomePage(modifier: Modifier) {
                         val stopCommand = "adb shell am broadcast -a " +
                             ShizukuIntentAccess.ACTION_STOP + " -p " +
                             context.packageName + " --es auth " + token
-                        Text("Start Shizuku", style = MaterialTheme.typography.labelLarge)
+                        Text("Start ADB", style = MaterialTheme.typography.labelLarge)
                         SelectionContainer {
                             Text(startCommand, style = MaterialTheme.typography.bodySmall,
                                 fontFamily = FontFamily.Monospace)
@@ -431,7 +431,7 @@ private fun HomePage(modifier: Modifier) {
                         OutlinedButton(onClick = {
                             clipboard.setText(AnnotatedString(startCommand))
                         }) { Text("Copy start command") }
-                        Text("Stop Shizuku", style = MaterialTheme.typography.labelLarge)
+                        Text("Stop ADB", style = MaterialTheme.typography.labelLarge)
                         SelectionContainer {
                             Text(stopCommand, style = MaterialTheme.typography.bodySmall,
                                 fontFamily = FontFamily.Monospace)

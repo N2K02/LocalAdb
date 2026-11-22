@@ -10,7 +10,7 @@ class ShizukuCollapsedCardTest {
         assertTrue(source.contains("var shizukuExpanded by rememberSaveable { mutableStateOf(false) }"))
         assertTrue(source.contains("shizukuExpanded = !shizukuExpanded"))
 
-        val header = source.indexOf("title = \"Shizuku manager\"")
+        val header = source.indexOf("title = \"ADB manager\"")
         val guard = source.indexOf("if (shizukuExpanded) {", header)
         assertTrue(header >= 0 && guard > header)
         listOf("Binder", "Shell", "Clients", "Grants").forEach { label ->
