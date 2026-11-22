@@ -132,17 +132,37 @@ class LocalHelperService : Binder() {
 
     private fun runSystemCommand(args: List<String>): Pair<Boolean, String> {
         val process = ProcessBuilder(args).redirectErrorStream(true).start()
-        if (!process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-            return false to "Command timed out"
-        }
-        return try {
-            (process.exitValue() == 0) to process.inputStream.bufferedReader().use {
-                it.readText().take(4096)
+        // Drain output while the command runs: waiting first can deadlock if the
+        // package manager writes more than the OS pipe buffer.
+        val output = StringBuilder()
+        val reader = kotlin.concurrent.thread(name = "installer-command-output", isDaemon = true) {
+            try {
+                process.inputStream.bufferedReader().use { stream ->
+                    val buffer = CharArray(1024)
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        synchronized(output) {
+                            val remaining = 4096 - output.length
+                            if (remaining > 0) output.append(buffer, 0, minOf(count, remaining))
+                        }
+                    }
+                }
+            } catch (_: java.io.IOException) {
+                // Process termination also closes the stream on some devices.
             }
-        } catch (_: java.io.IOException) {
-            false to "Could not read the installer command result"
         }
+        val finished = try {
+            process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (interrupted: InterruptedException) {
+            process.destroyForcibly()
+            Thread.currentThread().interrupt()
+            return false to "Command interrupted"
+        }
+        if (!finished) process.destroyForcibly()
+        reader.join(500)
+        if (!finished) return false to "Command timed out"
+        return (process.exitValue() == 0) to synchronized(output) { output.toString() }
     }
 
     companion object {
