@@ -385,6 +385,10 @@ internal object AndroidAutoPackageInstaller {
             val detail = "$name: ${result.detail}"
             appLog.append("AA install ${path.name}: ${result.status}: ${detail.take(300)}")
             if (result.status != LaunchStatus.REJECTED) return result.copy(detail = detail)
+            // Do not try another installer component after a shell launch request.
+            // Even a reported rejection can race with a confirmation activity,
+            // producing a second prompt after the first one is dismissed.
+            if (path == AndroidAutoInstallPolicy.Path.SHELL) return result.copy(detail = detail)
             rejected += detail
         }
         return LaunchResult(LaunchStatus.REJECTED, rejected.joinToString("\n"))
