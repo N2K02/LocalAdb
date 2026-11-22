@@ -46,7 +46,7 @@ internal fun AndroidAutoInstallerCard() {
         Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             ModernSectionHeader(
                 title = "ADB package installer",
-                subtitle = "System installer for car apps · direct ADB optional",
+                subtitle = "Choose an APK, then select one installation method",
                 icon = Icons.Rounded.Android,
                 tone = DashboardTone.NEUTRAL,
                 status = when {
@@ -103,7 +103,7 @@ internal fun AndroidAutoInstallerCard() {
                     Icon(Icons.Rounded.InstallMobile, contentDescription = null,
                         modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("AA via Shizuku")
+                    Text("Shizuku install")
                 }
             }
             if (state.packageName != null) {
@@ -141,7 +141,7 @@ internal fun AndroidAutoInstallerCard() {
                     modifier = Modifier.fillMaxWidth(),
                     enabled = activity != null && !state.busy && !state.pending,
                     onClick = { activity?.installApkWithSystem() },
-                ) { Text("System install") }
+                ) { Text("Android system installer") }
             }
             val hasDetails = state.packageName != null || state.installMethod != null ||
                 state.initiatingPackage != null || state.installingPackage != null ||
