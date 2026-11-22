@@ -93,9 +93,9 @@ internal object AndroidAutoPackageInstaller {
 
     fun select(context: Context, uri: Uri) {
         if (state.value.pending || state.value.busy) return
+        state.value = State(busy = true, message = "Reading selected APK…")
         task?.cancel()
         task = scope.launch {
-            state.value = State(busy = true, message = "Reading selected APK…")
             try {
                 val app = context.applicationContext
                 val file = AndroidAutoApkProvider.file(app)
@@ -138,6 +138,7 @@ internal object AndroidAutoPackageInstaller {
                     message = "APK selected. Choose an installation method.",
                     details = "")
             } catch (cancelled: CancellationException) {
+                // A newer selection or Quit owns the UI state now.
                 throw cancelled
             } catch (failure: Exception) {
                 archive = null
@@ -200,6 +201,8 @@ internal object AndroidAutoPackageInstaller {
                 details = "Direct shell service unavailable")
             return
         }
+        state.value = state.value.copy(busy = true, pending = false,
+            resultStatus = ResultStatus.INSTALLING, message = "Preparing direct ADB installation…")
         task?.cancel()
         task = scope.launch {
             val app = activity.applicationContext
@@ -224,7 +227,9 @@ internal object AndroidAutoPackageInstaller {
                 val result = withContext(Dispatchers.IO) { installDirect(app, file) }
                 check(result == "Success") { "Package manager: $result" }
                 val current = packageInfo(app, selected.packageName)
-                val changed = current != null && (old == null || current.lastUpdateTime > oldUpdate)
+                val changed = AndroidAutoInstallPolicy.isSelectedInstall(
+                    versionCode(current), requireNotNull(versionCode(selected)),
+                    current?.lastUpdateTime ?: 0L, oldUpdate, reportedSuccess = true)
                 val source = DirectInstallAttribution.readBack(app, selected.packageName)
                 val verdict = DirectInstallAttribution.verdict(requestedInstaller, source)
                 state.value = state.value.copy(
@@ -272,6 +277,8 @@ internal object AndroidAutoPackageInstaller {
         openInstaller: ((Intent) -> Unit)? = null,
     ) {
         if (state.value.busy || state.value.pending || archive == null) return
+        state.value = state.value.copy(busy = true, pending = false,
+            resultStatus = ResultStatus.INSTALLING, message = "Preparing system installation…")
         task?.cancel()
         task = scope.launch {
             val staged = archive ?: return@launch
@@ -302,7 +309,7 @@ internal object AndroidAutoPackageInstaller {
                 val file = AndroidAutoApkProvider.file(activity)
                 withContext(Dispatchers.IO) {
                     validateInstallCompatibility(activity, file)
-                    AndroidAutoApkProvider.cleanupExpired(activity)
+                    AndroidAutoApkProvider.cleanupExpired(activity, activeSession = attempt?.id)
                     file.copyTo(snapshot)
                 }
                 val previous = packageInfo(activity, staged.packageName)
@@ -341,7 +348,7 @@ internal object AndroidAutoPackageInstaller {
                     }
                 }
             } catch (cancelled: CancellationException) {
-                snapshot.delete()
+                if (attempt?.id != sessionId) snapshot.delete()
                 throw cancelled
             } catch (failure: Exception) {
                 clearAttempt(activity)
@@ -497,7 +504,8 @@ internal object AndroidAutoPackageInstaller {
                     val status = LaunchStatus.valueOf(requireNotNull(response.readString()))
                     LaunchResult(status, response.readString().orEmpty())
                 } catch (failure: android.os.RemoteException) {
-                    LaunchResult(LaunchStatus.UNKNOWN, "Shizuku disconnected during installer launch")
+                    LaunchResult(LaunchStatus.UNKNOWN,
+                        "Shizuku disconnected; installer may already be open. Check the installation before retrying.")
                 }
             } finally {
                 response.recycle()
