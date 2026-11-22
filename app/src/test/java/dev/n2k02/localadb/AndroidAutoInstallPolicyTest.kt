@@ -146,6 +146,12 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(helper.contains("startActivityAsUser"))
         assertTrue(helper.contains("ProcessBuilder(args)"))
         assertTrue(helper.contains("process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)"))
+        assertTrue(helper.contains("kotlin.concurrent.thread(name = \"installer-command-output\""))
+        assertTrue(helper.contains("process.inputStream.bufferedReader().use"))
+        assertTrue(helper.indexOf("process.inputStream.bufferedReader().use") <
+            helper.indexOf("process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)"))
+        assertTrue(helper.contains("4096 - output.length"))
+        assertTrue(helper.contains("process.destroyForcibly()"))
         assertFalse(helper.contains("pm install-create"))
         assertTrue(installer.contains("val handlers = findSystemInstallers(activity, intent)"))
         assertTrue(installer.contains("openInstaller)(intent)"))
