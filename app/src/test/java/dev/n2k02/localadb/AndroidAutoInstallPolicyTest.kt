@@ -144,6 +144,11 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(helper.contains("PackageManager.MATCH_SYSTEM_ONLY"))
         assertTrue(helper.contains("ComponentName.unflattenFromString(it.trim()) == component"))
         assertTrue(helper.contains("startActivityAsUser"))
+        // A Binder call may already have opened the installer even when its
+        // result is rejected or ambiguous. Never enqueue a second shell launch.
+        assertTrue(helper.contains("binderLaunchAttempted = true"))
+        assertTrue(helper.contains("if (binderLaunchAttempted || binderResult.status != LaunchStatus.REJECTED) return binderResult"))
+
         assertTrue(helper.contains("ProcessBuilder(args)"))
         assertTrue(helper.contains("process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)"))
         assertTrue(helper.contains("kotlin.concurrent.thread(name = \"installer-command-output\""))
