@@ -10,6 +10,8 @@ import android.os.IBinder
 import android.os.Parcel
 import android.os.Process
 import java.lang.reflect.InvocationTargetException
+import dev.n2k02.localadb.AndroidAutoInstallPolicy.LaunchResult
+import dev.n2k02.localadb.AndroidAutoInstallPolicy.LaunchStatus
 
 /** Instantiated by Shizuku in a separate shell process, never an Android Service. */
 class LocalHelperService : Binder() {
@@ -32,9 +34,11 @@ class LocalHelperService : Binder() {
             data.enforceInterface(DESCRIPTOR)
             val intent = Intent.CREATOR.createFromParcel(data)
             val resultTo = data.readStrongBinder()
+            val result = startSystemInstaller(intent, resultTo)
             checkNotNull(reply).apply {
                 writeNoException()
-                writeString(startSystemInstaller(intent, resultTo))
+                writeString(result.status.name)
+                writeString(result.detail)
             }
             return true
         }
@@ -44,16 +48,16 @@ class LocalHelperService : Binder() {
     /**
      * Shizuku starts this user service as UID 2000. Launch the *system* package
      * installer; do not call pm install (which records shell as initiator).
-     * Only verified system installer components and our fixed APK URI
+     * Only verified system installer components and an isolated APK session URI
      * are accepted; this Binder cannot run arbitrary shell input.
      */
-    private fun startSystemInstaller(request: Intent, resultTo: IBinder?): String {
+    private fun startSystemInstaller(request: Intent, resultTo: IBinder?): LaunchResult {
         check(Process.myUid() == Process.SHELL_UID) { "Installer helper is not UID 2000" }
         check(request.action == Intent.ACTION_INSTALL_PACKAGE) { "Invalid install action" }
         val component = requireNotNull(request.component) { "No installer component selected" }
         val uri = request.dataString.orEmpty()
-        val expected = "content://dev.n2k02.localadb.android-auto-apk/selected.apk"
-        check(uri == expected && request.type == AndroidAutoInstallPolicy.APK_MIME_TYPE) {
+        check(AndroidAutoInstallPolicy.sessionFromUri(uri, "dev.n2k02.localadb.android-auto-apk") != null &&
+            request.type == AndroidAutoInstallPolicy.APK_MIME_TYPE) {
             "Unexpected installation URI or type"
         }
         check(request.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0) {
@@ -65,9 +69,9 @@ class LocalHelperService : Binder() {
             "-a", AndroidAutoInstallPolicy.INSTALL_ACTION, "-d", uri,
             "-t", AndroidAutoInstallPolicy.APK_MIME_TYPE,
         ))
-        check(resolver.first && resolver.second.lineSequence().any {
+        if (!resolver.first || resolver.second.lineSequence().none {
             ComponentName.unflattenFromString(it.trim()) == component
-        }) { "Selected activity is not a verified system package installer" }
+        }) return LaunchResult(LaunchStatus.REJECTED, "Could not verify the selected system installer")
         val command = AndroidAutoInstallPolicy.shellLaunchArgs(component.flattenToString(), uri)
         val intent = Intent(AndroidAutoInstallPolicy.INSTALL_ACTION).apply {
             setDataAndType(request.data, AndroidAutoInstallPolicy.APK_MIME_TYPE)
@@ -109,20 +113,20 @@ class LocalHelperService : Binder() {
                     resultTo, null, 1720, 0, null, null)
             }
             val result = method.invoke(service, *args) as Int
-            if (result >= 0) "ok" else "System installer start failed: " + result
+            LaunchResult(AndroidAutoInstallPolicy.binderLaunchStatus(result), "Binder start result $result")
         }.getOrElse { failure ->
             val cause = (failure as? InvocationTargetException)?.targetException ?: failure
-            "Binder installer error: " + (cause.message ?: cause.javaClass.simpleName)
+            val status = if (failure !is InvocationTargetException || cause is SecurityException)
+                LaunchStatus.REJECTED else LaunchStatus.UNKNOWN
+            LaunchResult(status, "Binder installer error: " + (cause.message ?: cause.javaClass.simpleName))
         }
-        if (binderResult == "ok") return binderResult
+        if (binderResult.status != LaunchStatus.REJECTED) return binderResult
         return try {
             val (success, output) = runSystemCommand(command)
-            if (success && !output.contains("Error:", ignoreCase = true) &&
-                !output.contains("Exception", ignoreCase = true)) "ok"
-            else "System installer launch failed: " + output.take(250) + "; Binder: " + binderResult
-        } catch (failure: Exception) {
-            "System installer unavailable: " + (failure.message ?: failure.javaClass.simpleName) +
-                "; Binder: " + binderResult
+            LaunchResult(AndroidAutoInstallPolicy.shellLaunchStatus(success, output),
+                "Shell: ${output.trim().take(250)}. ${binderResult.detail}")
+        } catch (failure: java.io.IOException) {
+            LaunchResult(LaunchStatus.REJECTED, "Could not start shell installer: " + failure.message)
         }
     }
 
@@ -132,8 +136,12 @@ class LocalHelperService : Binder() {
             process.destroyForcibly()
             return false to "Command timed out"
         }
-        return (process.exitValue() == 0) to process.inputStream.bufferedReader().use {
-            it.readText().take(4096)
+        return try {
+            (process.exitValue() == 0) to process.inputStream.bufferedReader().use {
+                it.readText().take(4096)
+            }
+        } catch (_: java.io.IOException) {
+            false to "Could not read the installer command result"
         }
     }
 

@@ -69,6 +69,16 @@ internal fun AndroidAutoInstallerCard() {
                 )
             }
             InstallerResultSummary(state)
+            if (state.pending && !state.busy && state.installMethod == "SHELL") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { AndroidAutoPackageInstaller.checkPendingInstall(context) }) {
+                        Text("Check result")
+                    }
+                    TextButton(onClick = { AndroidAutoPackageInstaller.cancelPendingInstall(context) }) {
+                        Text("Stop waiting")
+                    }
+                }
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(

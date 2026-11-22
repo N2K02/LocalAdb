@@ -56,6 +56,31 @@ class AndroidAutoInstallPolicyTest {
         }
     }
 
+    @Test fun installerLaunchDistinguishesAcceptedRejectedAndAmbiguousResults() {
+        assertEquals(AndroidAutoInstallPolicy.LaunchStatus.OPENED, policy.binderLaunchStatus(0))
+        assertEquals(AndroidAutoInstallPolicy.LaunchStatus.REUSED, policy.binderLaunchStatus(3))
+        assertEquals(AndroidAutoInstallPolicy.LaunchStatus.REJECTED, policy.binderLaunchStatus(1))
+        assertEquals(AndroidAutoInstallPolicy.LaunchStatus.REJECTED, policy.binderLaunchStatus(100))
+        assertEquals(AndroidAutoInstallPolicy.LaunchStatus.UNKNOWN, policy.binderLaunchStatus(99))
+        assertEquals(AndroidAutoInstallPolicy.LaunchStatus.OPENED, policy.shellLaunchStatus(true, "Starting: Intent"))
+        assertEquals(AndroidAutoInstallPolicy.LaunchStatus.REJECTED, policy.shellLaunchStatus(true,
+            "Warning: Activity not started because the current activity is being kept for the user."))
+        assertEquals(AndroidAutoInstallPolicy.LaunchStatus.REUSED, policy.shellLaunchStatus(true,
+            "Warning: Activity not started, its current task has been brought to the front"))
+        assertEquals(AndroidAutoInstallPolicy.LaunchStatus.UNKNOWN, policy.shellLaunchStatus(false, "Command timed out"))
+    }
+
+    @Test fun apkSessionUriRequiresExactAuthorityAndUniqueSessionPath() {
+        val authority = "dev.n2k02.localadb.android-auto-apk"
+        val session = "12345678-abcd-4321-abcd-1234567890ab"
+        val prefix = "content://$authority/"
+        assertEquals(session, policy.sessionFromUri("$prefix$session.apk", authority))
+        assertEquals(null, policy.sessionFromUri("${prefix}selected.apk", authority))
+        assertEquals(null, policy.sessionFromUri("$prefix../$session.apk", authority))
+        assertEquals(null, policy.sessionFromUri("content://evil/$session.apk", authority))
+        assertEquals(null, policy.sessionFromUri("$prefix$session.apk?path=other", authority))
+    }
+
     @Test fun installerHomeCardIsLastAndExistingCardsStayCompact() {
         val main = java.io.File("src/main/java/dev/n2k02/localadb/LocalAdbScreen.kt")
             .readText()
@@ -69,17 +94,17 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(home.contains("NativeShizukuManager.restart(context)"))
     }
 
-    @Test fun providerUsesOnlyFixedReadOnlyUriAndHelperChecksUid() {
+    @Test fun providerUsesOnlyIsolatedReadOnlyUriAndHelperChecksUid() {
         val provider = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoApkProvider.kt")
             .readText()
         val service = java.io.File("src/main/java/dev/n2k02/localadb/LocalHelperService.kt")
             .readText()
         val installer = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt")
             .readText()
-        assertTrue(provider.contains("uri.path == \"/selected.apk\""))
+        assertTrue(provider.contains("AndroidAutoInstallPolicy.sessionFromUri(uri.toString()"))
         assertTrue(provider.contains("mode != \"r\""))
         assertTrue(service.contains("Process.myUid() == Process.SHELL_UID"))
-        assertTrue(service.contains("check(uri == expected && request.type"))
+        assertTrue(service.contains("AndroidAutoInstallPolicy.sessionFromUri(uri,"))
         assertTrue(installer.contains("DirectInstallAttribution.readBack(app, session.packageName)"))
         assertTrue(installer.contains("previousUpdate"))
         assertTrue(installer.contains("compatibleSigner"))
@@ -106,6 +131,9 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(verification.contains("attempt !== session"))
         assertTrue(verification.contains("index == delays.lastIndex"))
         assertTrue(verification.contains("Activity.RESULT_CANCELED"))
+        assertTrue(verification.contains("if (resultCode == null && !expired)"))
+        assertTrue(verification.contains("Still awaiting Android installer confirmation."))
+        assertTrue(installer.contains("withTimeoutOrNull(15_000) { attached.await() }"))
         assertFalse(verification.contains("launch(activity,"))
         assertFalse(installer.contains("shell_works"))
     }
@@ -121,7 +149,7 @@ class AndroidAutoInstallPolicyTest {
         assertFalse(helper.contains("pm install-create"))
         assertTrue(installer.contains("val handlers = findSystemInstallers(activity, intent)"))
         assertTrue(installer.contains("openInstaller)(intent)"))
-        assertTrue(installer.contains("check(result == \"ok\")"))
+        assertTrue(installer.contains("if (result.status != LaunchStatus.REJECTED) return result.copy(detail = detail)"))
     }
 
     @Test fun quitClearsInstallerSessionBeforeStoppingShizuku() {

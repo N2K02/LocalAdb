@@ -134,7 +134,10 @@ and select an installation method.
 LocalADB checks the installed version and signing key before launch. The system
 installer receives read access to the selected APK. After an attempt, expand
 the result for the method, installer activity, initiator, and installer of
-record. A failed attempt leaves the next method up to the user.
+record. If a verified installer explicitly rejects the launch, LocalADB can try the
+next verified handler. When the launch outcome is unclear, use **Check result**
+or **Stop waiting**. An open Shizuku install keeps its APK available for up to
+10 minutes.
 
 Android Auto launcher visibility depends on the installed app and head unit.
 Play Protect can scan the APK. Test with the car parked and check the actual

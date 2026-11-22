@@ -1,6 +1,7 @@
 package dev.n2k02.localadb
 
 import android.content.ContentProvider
+import android.content.Context
 import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
@@ -16,17 +17,33 @@ import java.io.FileNotFoundException
  */
 class AndroidAutoApkProvider : ContentProvider() {
     companion object {
-        private const val FILE_NAME = "selected.apk"
-        fun file(context: android.content.Context): File =
-            File(File(context.cacheDir, "android_auto_installer"), FILE_NAME)
-        fun uri(context: android.content.Context): Uri =
-            Uri.parse("content://" + context.packageName + ".android-auto-apk/" + FILE_NAME)
+        internal const val SESSION_LIFETIME_MS = 10 * 60_000L
+        private fun directory(context: Context) = File(context.cacheDir, "android_auto_installer")
+        fun file(context: Context): File = File(directory(context), "selected.apk")
+
+        internal fun sessionFile(context: Context, session: String): File {
+            require(ApkInstallPolicy.validSession(session))
+            return File(directory(context), "$session.apk")
+        }
+
+        internal fun uri(context: Context, session: String): Uri =
+            Uri.parse("content://${context.packageName}.android-auto-apk/${sessionFile(context, session).name}")
+
+        internal fun cleanupExpired(context: Context, now: Long = System.currentTimeMillis()) {
+            directory(context).listFiles()?.forEach { file ->
+                val id = file.name.removeSuffix(".apk")
+                if (id != file.name && ApkInstallPolicy.validSession(id) &&
+                    now - file.lastModified() >= SESSION_LIFETIME_MS) file.delete()
+            }
+        }
     }
 
     private fun selected(uri: Uri): File {
-        require(uri.path == "/selected.apk") { "Only the selected APK can be read" }
-        val source = file(requireNotNull(context))
-        if (!source.isFile) throw FileNotFoundException("No APK selected")
+        val app = requireNotNull(context)
+        val session = AndroidAutoInstallPolicy.sessionFromUri(uri.toString(),
+            "${app.packageName}.android-auto-apk") ?: throw FileNotFoundException("Invalid APK session")
+        val source = sessionFile(app, session)
+        if (!source.isFile) throw FileNotFoundException("No APK staged for this session")
         return source
     }
 
