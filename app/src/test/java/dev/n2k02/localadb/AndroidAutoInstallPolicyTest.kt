@@ -164,6 +164,28 @@ class AndroidAutoInstallPolicyTest {
         assertTrue(installer.contains("if (path == AndroidAutoInstallPolicy.Path.SHELL) return result.copy(detail = detail)"))
     }
 
+    @Test fun installerLocksBeforeLaunchingCoroutineAndProtectsActiveSession() {
+        val installer = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoPackageInstaller.kt")
+            .readText()
+        val provider = java.io.File("src/main/java/dev/n2k02/localadb/AndroidAutoApkProvider.kt")
+            .readText()
+        val selection = installer.substringAfter("fun select(context: Context, uri: Uri)")
+            .substringBefore("fun installViaShizuku(")
+        val system = installer.substringAfter("private fun launch(")
+            .substringBefore("private suspend fun launchVerifiedInstaller(")
+        val direct = installer.substringAfter("fun installDirectFromHome(")
+            .substringBefore("private fun compatibleSigner(")
+        assertTrue(selection.indexOf("state.value = State(busy = true") <
+            selection.indexOf("task = scope.launch"))
+        assertTrue(system.indexOf("resultStatus = ResultStatus.INSTALLING") <
+            system.indexOf("task = scope.launch"))
+        assertTrue(direct.indexOf("resultStatus = ResultStatus.INSTALLING") <
+            direct.indexOf("task = scope.launch"))
+        assertTrue(system.contains("cleanupExpired(activity, activeSession = attempt?.id)"))
+        assertTrue(provider.contains("id != activeSession"))
+        assertTrue(direct.contains("AndroidAutoInstallPolicy.isSelectedInstall("))
+    }
+
     @Test fun quitClearsInstallerSessionBeforeStoppingShizuku() {
         val activity = java.io.File("src/main/java/dev/n2k02/localadb/MainActivity.kt")
             .readText()
