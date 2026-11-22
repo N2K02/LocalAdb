@@ -29,10 +29,10 @@ class AndroidAutoApkProvider : ContentProvider() {
         internal fun uri(context: Context, session: String): Uri =
             Uri.parse("content://${context.packageName}.android-auto-apk/${sessionFile(context, session).name}")
 
-        internal fun cleanupExpired(context: Context, now: Long = System.currentTimeMillis()) {
+        internal fun cleanupExpired(context: Context, now: Long = System.currentTimeMillis(), activeSession: String? = null) {
             directory(context).listFiles()?.forEach { file ->
                 val id = file.name.removeSuffix(".apk")
-                if (id != file.name && ApkInstallPolicy.validSession(id) &&
+                if (id != activeSession && id != file.name && ApkInstallPolicy.validSession(id) &&
                     now - file.lastModified() >= SESSION_LIFETIME_MS) file.delete()
             }
         }
