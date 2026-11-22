@@ -82,6 +82,9 @@ class LocalHelperService : Binder() {
             putExtra("android.content.pm.extra.INSTALL_REASON", 1)
             putExtra(Intent.EXTRA_REFERRER_NAME, "android-app://" + AndroidAutoInstallPolicy.VENDING)
         }
+        // Never invoke a second installer launcher after Binder was called: an
+        // ambiguous Binder result can still leave a live confirmation window.
+        var binderLaunchAttempted = false
         val binderResult = runCatching {
             val service = if (Build.VERSION.SDK_INT >= 29)
                 Class.forName("android.app.ActivityTaskManager")
@@ -112,6 +115,7 @@ class LocalHelperService : Binder() {
                 else arrayOf(null, "com.android.shell", intent, intent.type,
                     resultTo, null, 1720, 0, null, null)
             }
+            binderLaunchAttempted = true
             val result = method.invoke(service, *args) as Int
             LaunchResult(AndroidAutoInstallPolicy.binderLaunchStatus(result), "Binder start result $result")
         }.getOrElse { failure ->
@@ -120,7 +124,7 @@ class LocalHelperService : Binder() {
                 LaunchStatus.REJECTED else LaunchStatus.UNKNOWN
             LaunchResult(status, "Binder installer error: " + (cause.message ?: cause.javaClass.simpleName))
         }
-        if (binderResult.status != LaunchStatus.REJECTED) return binderResult
+        if (binderLaunchAttempted || binderResult.status != LaunchStatus.REJECTED) return binderResult
         return try {
             val (success, output) = runSystemCommand(command)
             LaunchResult(AndroidAutoInstallPolicy.shellLaunchStatus(success, output),
