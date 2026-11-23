@@ -93,6 +93,10 @@ internal object NativeShizukuManager {
         }
     }
 
+    /** True while LocalAdb's Shizuku server answers: an adbd restart now would kill it. */
+    internal fun serving(context: Context): Boolean =
+        state.value.serviceReady && binderReady(context.applicationContext)
+
     /** A live manager binder, *not* an APK install or an optimistic shell result. */
     private fun binderReady(context: Context): Boolean = runCatching {
         ensureValidOwnership(context)
