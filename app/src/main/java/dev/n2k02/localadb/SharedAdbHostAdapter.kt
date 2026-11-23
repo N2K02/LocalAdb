@@ -48,6 +48,7 @@ internal object SharedAdbHostAdapter {
                 AdbEngine.publishVerified(adb)
                 NativeShizukuManager.start(app)
                 AdbPermissionBootstrap.configure(app)
+                Resilience.onVerifiedShell(app)
             }
 
             override suspend fun onRestoreAfterRestartChanged(enabled: Boolean) {

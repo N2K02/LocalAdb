@@ -90,6 +90,7 @@ internal object AdbEngine {
             shared.acquireService()
         }
         AdbRecoveryWorker.schedule(app)
+        runCatching { UsbDebuggingWatch.arm(app) }
         updateHelperRecovery(app, AdbSettings.get(app, AdbSettings.Option.WATCHDOG))
         if (explicit) retry(app)
     }
@@ -114,7 +115,15 @@ internal object AdbEngine {
     fun retry(context: Context) {
         if (!active || AdbSettings.stopped(context)) return
         val shared = ownedCore ?: return
-        scope.launch { shared.retry(auto = false) }
+        val app = context.applicationContext
+        scope.launch {
+            // retry() on a verified TLS session re-runs TLS->TCP promotion;
+            // tcpip:5555 restarts adbd and init kills the Shizuku server with it.
+            if (AdbdRestartGuard.mayRetry(
+                    sessionVerified = shared.state.value.connected,
+                    shizukuServing = NativeShizukuManager.serving(app)))
+                shared.retry(auto = false)
+        }
     }
 
     fun preferencesChanged(context: Context) {
@@ -170,6 +179,7 @@ internal object AdbEngine {
         helperRecovery = null
         scope.cancel()
         AdbRecoveryWorker.cancel(app)
+        runCatching { UsbDebuggingWatch.cancel(app) }
         withContext(NonCancellable + Dispatchers.IO) {
             SharedAdbHostAdapter.shutdown()
         }

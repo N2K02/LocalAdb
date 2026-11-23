@@ -50,5 +50,6 @@ internal fun AdbConnectionPage(modifier: Modifier = Modifier) {
                 runCatching { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
             },
         )
+        ResilienceCard()
     }
 }
