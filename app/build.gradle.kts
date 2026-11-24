@@ -11,7 +11,7 @@ val appVersionSuffix = (findProperty("appVersionSuffix") as String?) ?: ""
 android {
     namespace = "dev.n2k02.localadb"
     compileSdk {
-        version = release(37) { minorApiLevel = 0 }
+        version = release(37) { minorApiLevel = 2 }
     }
     defaultConfig {
         applicationId = "dev.n2k02.localadb"
@@ -37,16 +37,16 @@ android {
     testOptions { unitTests.isReturnDefaultValues = true }
 }
 dependencies {
-    implementation("dev.n2k02:theme:0.1.14")
-    implementation("dev.n2k02:updater:0.1.36")
+    implementation("dev.n2k02:theme:0.1.15")
+    implementation("dev.n2k02:updater:0.1.39")
     implementation("dev.n2k02:adb-core:0.1.8")
-    implementation("androidx.compose.material3:material3:1.5.0-rc01")
+    implementation("androidx.compose.material3:material3:1.6.0-alpha01")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
-    implementation("org.bouncycastle:bcprov-jdk15to18:1.86")
-    implementation("org.bouncycastle:bcpkix-jdk15to18:1.86")
+    implementation("org.bouncycastle:bcprov-jdk15to18:1.87")
+    implementation("org.bouncycastle:bcpkix-jdk15to18:1.87")
     implementation("org.conscrypt:conscrypt-android:2.9.0")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
